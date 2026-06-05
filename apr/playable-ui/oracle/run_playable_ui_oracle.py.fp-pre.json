@@ -1,0 +1,26 @@
+{
+  "phase": "pre",
+  "label": "",
+  "oracle_cmd": [
+    "python",
+    "apr\\playable-ui\\oracle\\run_playable_ui_oracle.py"
+  ],
+  "oracle_exit_code": 1,
+  "outcome": "FAIL",
+  "infra_codes": [
+    2,
+    3
+  ],
+  "run_error": null,
+  "timeout_sec": 300.0,
+  "contract_held": true,
+  "verdict": "HELD: pre-fix oracle FAILED as expected — bug reproduced.",
+  "duration_sec": 0.441,
+  "env": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.10",
+    "cwd": "<repo-root>\\.worktrees\\apr-playable-ui",
+    "epoch": 1780567392
+  },
+  "output_tail": "t expose a daily todo hotkey/action handler | provenance: spec P0 #10 and feature request daily todo hotkey\n- MainGame must expose save and load handlers | provenance: spec save/load invariant and P0 #12\n- MainGame must wire core world services | provenance: feature request MainGame wires services and spec module boundaries\n- GridSelectionOverlay must handle mouse down/drag/release input | provenance: spec GridSelectionOverlay section\n- GridSelectionOverlay must convert screen/world positions into grid cells | provenance: spec GridSelectionOverlay section\n- GridSelectionOverlay must emit or record a rectangle preview | provenance: spec GridSelectionOverlay section\n- FencedAreaEditPanel must edit name and description | provenance: spec FencedAreaEditPanel section\n- FencedAreaEditPanel must call BuildingPlacementService.place_fenced_area on confirm | provenance: spec FencedAreaEditPanel section\n- FencedAreaOverlay must read FencedArea data from WorldPlaceRegistry | provenance: spec FencedAreaOverlay section\n- FencedAreaOverlay must draw footprint/range, door, fence boundary, and label | provenance: spec FencedAreaOverlay section\n- README.md must document WASD camera controls | provenance: feature request README controls and verification commands\n- README.md must document left drag/drop controls | provenance: feature request README controls and verification commands\n- README.md must document right-click discard control | provenance: feature request README controls and verification commands\n- README.md must document FencedArea creation | provenance: feature request README controls and verification commands\n- README.md must document save/load controls | provenance: feature request README controls and verification commands\n- README.md must document verification commands | provenance: feature request README controls and verification commands\n- Godot playable_ui_oracle.gd scene load smoke must pass\ni/oracle/playable_ui_oracle.gd:16)\nERROR: main scene must contain WorldMap/GridSelectionOverlay | provenance: spec Godot node tree\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _initialize (res://apr/playable-ui/oracle/playable_ui_oracle.gd:16)\nERROR: main scene must contain WorldMap/FencedAreaOverlay | provenance: spec Godot node tree\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _initialize (res://apr/playable-ui/oracle/playable_ui_oracle.gd:16)\nERROR: main scene must contain UI/FencedAreaEditPanel | provenance: spec Godot node tree\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _initialize (res://apr/playable-ui/oracle/playable_ui_oracle.gd:16)\nERROR: main scene must contain WorldState/WorldPlaceRegistry | provenance: spec Godot node tree\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _initialize (res://apr/playable-ui/oracle/playable_ui_oracle.gd:16)\nERROR: main scene must contain WorldState/WorldEntityRegistry | provenance: spec Godot node tree\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _initialize (res://apr/playable-ui/oracle/playable_ui_oracle.gd:16)\nERROR: main scene must contain WorldState/BuildingPlacementService | provenance: spec Godot node tree\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _initialize (res://apr/playable-ui/oracle/playable_ui_oracle.gd:16)\nERROR: main scene must contain WorldState/InteractionEventLog | provenance: spec Godot node tree\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _initialize (res://apr/playable-ui/oracle/playable_ui_oracle.gd:16)\n | provenance: spec Godot node tree and feature request headless load/smoke\n"
+}

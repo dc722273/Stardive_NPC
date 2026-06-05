@@ -1,0 +1,74 @@
+[gd_scene load_steps=7 format=3 uid="uid://ai_npc_emergence_main"]
+
+[ext_resource type="Script" path="res://scripts/MainGame.gd" id="1_main_game"]
+[ext_resource type="Script" path="res://scripts/ui/GridSelectionOverlay.gd" id="2_grid_selection"]
+[ext_resource type="Script" path="res://scripts/ui/FencedAreaOverlay.gd" id="3_fenced_overlay"]
+[ext_resource type="Script" path="res://scripts/ui/FencedAreaEditPanel.gd" id="4_fenced_panel"]
+[ext_resource type="Script" path="res://scripts/ui/EntityVisualLayer.gd" id="5_entity_visual"]
+[ext_resource type="Script" path="res://scripts/ui/ScheduleSidebar.gd" id="6_schedule_sidebar"]
+
+[node name="GameRoot" type="Node2D"]
+script = ExtResource("1_main_game")
+
+[node name="WorldMap" type="Node2D" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="WorldMap"]
+enabled = true
+
+[node name="GridSelectionOverlay" type="Node2D" parent="WorldMap"]
+script = ExtResource("2_grid_selection")
+
+[node name="FencedAreaOverlay" type="Node2D" parent="WorldMap"]
+script = ExtResource("3_fenced_overlay")
+
+[node name="EntityVisualLayer" type="Node2D" parent="WorldMap"]
+script = ExtResource("5_entity_visual")
+
+[node name="WorldState" type="Node" parent="."]
+
+[node name="WorldPlaceRegistry" type="Node" parent="WorldState"]
+
+[node name="WorldEntityRegistry" type="Node" parent="WorldState"]
+
+[node name="BuildingPlacementService" type="Node" parent="WorldState"]
+
+[node name="InteractionEventLog" type="Node" parent="WorldState"]
+
+[node name="NPCSystem" type="Node" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="FencedAreaEditPanel" type="PanelContainer" parent="UI"]
+offset_left = 16.0
+offset_top = 56.0
+offset_right = 336.0
+offset_bottom = 272.0
+script = ExtResource("4_fenced_panel")
+
+[node name="FeedbackLabel" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 520.0
+offset_bottom = 48.0
+text = "Ready"
+
+[node name="ControlsHint" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 540.0
+offset_right = 520.0
+offset_bottom = 700.0
+text = "[H] 控制说明"
+
+[node name="ScheduleSidebar" type="PanelContainer" parent="UI"]
+offset_left = 600.0
+offset_top = 16.0
+offset_right = 900.0
+offset_bottom = 400.0
+script = ExtResource("6_schedule_sidebar")
+
+[node name="ClockLabel" type="Label" parent="UI"]
+offset_left = 600.0
+offset_top = 0.0
+offset_right = 900.0
+offset_bottom = 16.0
+text = "Day 1 · 00:00"

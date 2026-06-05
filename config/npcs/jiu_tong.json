@@ -1,0 +1,33 @@
+{
+  "id": "jiu_tong",
+  "name": "九筒",
+  "tile_x": 13,
+  "tile_y": 14,
+  "traits": {
+    "tell": 42,
+    "face": 65,
+    "control": 52,
+    "caution": 82,
+    "play": 36
+  },
+  "tags": ["debt_avoidant", "strategic_observer", "avoid_responsibility"],
+  "style": {
+    "leakActions": ["glance_target", "hand_freeze", "blink_twice"],
+    "coverActions": ["deadpan", "look_away", "straighten_sleeve"],
+    "wantActions": ["stare_object", "reach_then_stop", "look_around"],
+    "rejectActions": ["step_back", "hold_up_hands", "push_object_back"],
+    "observeActions": ["glance_target", "look_between", "avoid_eye_contact"],
+    "lineMode": "strategic_observer"
+  },
+  "animSetId": "jiu_tong",
+  "runtime": {
+    "npcId": "jiu_tong",
+    "performanceState": "idle",
+    "emotionalState": "neutral",
+    "cooldowns": {
+      "lastMicroActionId": "",
+      "lastLineMode": "",
+      "lastReactedAt": 0
+    }
+  }
+}

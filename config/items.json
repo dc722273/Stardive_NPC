@@ -1,0 +1,86 @@
+{
+  "objectTypes": {
+    "diet_coke": {
+      "id": "diet_coke",
+      "name": "川普专属健怡可乐",
+      "category": "drink",
+      "defaultSocial": {
+        "status": 80,
+        "utility": 50,
+        "debt": 60,
+        "awkward": 90,
+        "joke": 95,
+        "danger": 5
+      },
+      "defaultAffordance": {
+        "draggable": true,
+        "openable": true,
+        "consumable": true
+      }
+    },
+    "jiu_tong_gun": {
+      "id": "jiu_tong_gun",
+      "name": "九筒的枪",
+      "category": "weapon",
+      "defaultSocial": {
+        "status": 75,
+        "utility": 10,
+        "debt": 20,
+        "awkward": 85,
+        "joke": 70,
+        "danger": 95
+      },
+      "defaultAffordance": {
+        "draggable": true,
+        "openable": false,
+        "consumable": false
+      }
+    }
+  },
+  "objects": [
+    {
+      "id": "diet_coke",
+      "typeId": "diet_coke",
+      "ownerId": "trump",
+      "accessRule": {
+        "allowedNpcIds": ["trump"],
+        "publicKnown": true,
+        "exclusivity": 95
+      },
+      "currentAnchor": {
+        "type": "npc",
+        "npcId": "trump"
+      },
+      "custodyState": "normal",
+      "state": {
+        "opened": false,
+        "consumed": 0
+      },
+      "memory": {
+        "topLinks": []
+      }
+    },
+    {
+      "id": "jiu_tong_gun",
+      "typeId": "jiu_tong_gun",
+      "ownerId": "jiu_tong",
+      "accessRule": {
+        "allowedNpcIds": ["jiu_tong"],
+        "publicKnown": true,
+        "exclusivity": 85
+      },
+      "currentAnchor": {
+        "type": "npc",
+        "npcId": "jiu_tong"
+      },
+      "custodyState": "normal",
+      "state": {
+        "opened": false,
+        "consumed": 0
+      },
+      "memory": {
+        "topLinks": []
+      }
+    }
+  ]
+}

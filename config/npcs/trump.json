@@ -1,0 +1,33 @@
+{
+  "id": "trump",
+  "name": "特朗普",
+  "tile_x": 16,
+  "tile_y": 8,
+  "traits": {
+    "tell": 78,
+    "face": 86,
+    "control": 88,
+    "caution": 44,
+    "play": 72
+  },
+  "tags": ["authority", "status_anxious", "over_denial", "private_favoritism"],
+  "style": {
+    "leakActions": ["glance_object", "tap_stop", "blush"],
+    "coverActions": ["straighten_clothes", "fake_serious", "look_away"],
+    "wantActions": ["glance_object", "hover_hand", "reach_then_stop"],
+    "rejectActions": ["hold_up_hands", "push_object_back", "look_away"],
+    "observeActions": ["look_between", "eyebrow_raise", "fake_serious"],
+    "lineMode": "over_denial"
+  },
+  "animSetId": "trump",
+  "runtime": {
+    "npcId": "trump",
+    "performanceState": "idle",
+    "emotionalState": "neutral",
+    "cooldowns": {
+      "lastMicroActionId": "",
+      "lastLineMode": "",
+      "lastReactedAt": 0
+    }
+  }
+}

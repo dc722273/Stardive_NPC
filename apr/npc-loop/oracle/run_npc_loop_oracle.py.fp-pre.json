@@ -1,0 +1,26 @@
+{
+  "phase": "pre",
+  "label": "",
+  "oracle_cmd": [
+    "python",
+    "apr\\npc-loop\\oracle\\run_npc_loop_oracle.py"
+  ],
+  "oracle_exit_code": 1,
+  "outcome": "FAIL",
+  "infra_codes": [
+    2,
+    3
+  ],
+  "run_error": null,
+  "timeout_sec": 300.0,
+  "contract_held": true,
+  "verdict": "HELD: pre-fix oracle FAILED as expected — bug reproduced.",
+  "duration_sec": 0.531,
+  "env": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.10",
+    "cwd": "<repo-root>\\.worktrees\\apr-npc-loop",
+    "epoch": 1780567392
+  },
+  "output_tail": "ient.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/DailyTodoPlanner.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/NPCActionScheduler.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/TodoExecutor.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/NPCMover.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nNPC loop oracle did not print PASS marker. Godot exit=1\n--- output ---\nGodot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org\n\nNPC_LOOP_ORACLE: FAIL\nERROR: required NPC module is loadable: res://scripts/npc/LLMClient.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/DailyTodoPlanner.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/NPCActionScheduler.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/TodoExecutor.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\nERROR: required NPC module is loadable: res://scripts/npc/NPCMover.gd\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/npc-loop/oracle/npc_loop_oracle.gd:384)\n       [1] _run (res://apr/npc-loop/oracle/npc_loop_oracle.gd:31)\n       [2] _initialize (res://apr/npc-loop/oracle/npc_loop_oracle.gd:25)\n\n"
+}

@@ -1,0 +1,33 @@
+{
+  "id": "shi_ye",
+  "name": "师爷",
+  "tile_x": 14,
+  "tile_y": 13,
+  "traits": {
+    "tell": 66,
+    "face": 78,
+    "control": 74,
+    "caution": 70,
+    "play": 92
+  },
+  "tags": ["bureaucratic", "gossip", "avoid_responsibility", "ledger_brain"],
+  "style": {
+    "leakActions": ["eyes_widen", "hand_freeze", "pen_lift"],
+    "coverActions": ["open_notebook", "fake_cough", "hide_behind_notebook"],
+    "wantActions": ["open_notebook", "write_too_fast", "glance_target"],
+    "rejectActions": ["step_back", "snap_notebook_close", "hold_up_hands"],
+    "observeActions": ["eyebrow_raise", "look_between", "pen_lift"],
+    "lineMode": "bureaucratic_rename"
+  },
+  "animSetId": "shi_ye",
+  "runtime": {
+    "npcId": "shi_ye",
+    "performanceState": "idle",
+    "emotionalState": "neutral",
+    "cooldowns": {
+      "lastMicroActionId": "",
+      "lastLineMode": "",
+      "lastReactedAt": 0
+    }
+  }
+}

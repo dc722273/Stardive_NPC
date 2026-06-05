@@ -1,0 +1,26 @@
+{
+  "phase": "pre",
+  "label": "",
+  "oracle_cmd": [
+    "python",
+    "apr\\place-registry-walkable\\oracle\\run_place_registry_walkable_oracle.py"
+  ],
+  "oracle_exit_code": 1,
+  "outcome": "FAIL",
+  "infra_codes": [
+    2,
+    3
+  ],
+  "run_error": null,
+  "timeout_sec": 300.0,
+  "contract_held": true,
+  "verdict": "HELD: pre oracle FAILED as expected.",
+  "duration_sec": 0.493,
+  "env": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.10",
+    "cwd": "<repo-root>",
+    "epoch": 1780569632
+  },
+  "output_tail": "Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org\n\nPLACE_REGISTRY_WALKABLE_ORACLE: FAIL\nERROR: A3 degenerate place (empty interior): result is not a fence cell (got (5, 5))\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\nERROR: A4 degenerate place: result is door_cell or INVALID_CELL (got (5, 5))\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\nERROR: B1 door cell is walkable after placement even though it was pre-solid (expected=true actual=false)\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\nERROR: B2 interior cell is walkable after placement even though it was pre-solid (expected=true actual=false)\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\nplace-registry-walkable oracle did not print PASS marker. Godot exit=1\n--- output ---\nGodot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org\n\nPLACE_REGISTRY_WALKABLE_ORACLE: FAIL\nERROR: A3 degenerate place (empty interior): result is not a fence cell (got (5, 5))\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\nERROR: A4 degenerate place: result is door_cell or INVALID_CELL (got (5, 5))\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\nERROR: B1 door cell is walkable after placement even though it was pre-solid (expected=true actual=false)\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\nERROR: B2 interior cell is walkable after placement even though it was pre-solid (expected=true actual=false)\n   at: push_error (core/variant/variant_utility.cpp:1024)\n   GDScript backtrace (most recent call first):\n       [0] _finish (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:149)\n       [1] _initialize (res://apr/place-registry-walkable/oracle/place_registry_walkable_oracle.gd:32)\n\n"
+}

@@ -1,0 +1,6 @@
+version=4.6.3-stable
+flavor=standard
+platform=windows-x86_64
+archive=Godot_v4.6.3-stable_win64.exe.zip
+download_url=https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable/Godot_v4.6.3-stable_win64.exe.zip
+sha512=d44ea7ef5bab754cacd49d581b6062836b2eea12a82e1d183aebfad9cd8c7db2bd82513337bd657d6d2d5c04d46239c0570b029faf1343e81e8a2fa7b85dd83b

@@ -1,0 +1,157 @@
+{
+  "free_roam": {
+    "enabled": true,
+    "move_speed": 44,
+    "meeting_distance_tiles": 2.05,
+    "meeting_cooldown_seconds": 18,
+    "arrival_pause_seconds": [4, 6],
+    "involvement_radius_meters": 1.0,
+    "locations": [
+      {
+        "id": "mansion_porch",
+        "name": "庄园门廊",
+        "tile": [15, 5],
+        "area": "estate",
+        "tags": ["主位", "门廊", "被看见"]
+      },
+      {
+        "id": "inner_lawn",
+        "name": "内院草坪",
+        "tile": [15, 8],
+        "area": "estate",
+        "tags": ["高尔夫", "排场", "舞台"]
+      },
+      {
+        "id": "front_gate",
+        "name": "鹅城正门",
+        "tile": [15, 12],
+        "area": "gate",
+        "tags": ["门槛", "试探", "冲突"]
+      },
+      {
+        "id": "gate_plaza",
+        "name": "门口空地",
+        "tile": [15, 14],
+        "area": "gate",
+        "tags": ["人群", "起哄", "谈条件"]
+      },
+      {
+        "id": "ledger_corner",
+        "name": "账本角",
+        "tile": [13, 13],
+        "area": "gate",
+        "tags": ["账本", "算盘", "把柄"]
+      }
+    ],
+    "intentions": {
+      "trump": [
+        {
+          "id": "guard_status",
+          "label": "巡视庄园排场",
+          "motive": "确认自己的规矩还在被看见",
+          "locations": [{ "location": "mansion_porch", "weight": 3 }, { "location": "inner_lawn", "weight": 3 }]
+        },
+        {
+          "id": "find_coke",
+          "label": "找健怡可乐",
+          "motive": "尊贵感需要一瓶可乐撑场面",
+          "locations": [{ "location": "mansion_porch", "weight": 2 }, { "location": "inner_lawn", "weight": 1 }]
+        }
+      ],
+      "jiu_tong": [
+        {
+          "id": "inspect_gate",
+          "label": "观察城门破绽",
+          "motive": "先看清鹅城哪里能进哪里能退",
+          "locations": [{ "location": "front_gate", "weight": 2 }, { "location": "gate_plaza", "weight": 1 }]
+        }
+      ],
+      "shi_ye": [
+        {
+          "id": "ledger_gossip",
+          "label": "翻账本找话头",
+          "motive": "把别人的尴尬记成自己的筹码",
+          "locations": [{ "location": "ledger_corner", "weight": 3 }, { "location": "gate_plaza", "weight": 2 }]
+        }
+      ]
+    }
+  },
+  "interactionDeltaConfig": {
+    "baseHeatDelta": 18,
+    "objectHeatWeights": {
+      "status": 0.05,
+      "utility": 0.02,
+      "debt": 0.08,
+      "awkward": 0.10,
+      "joke": 0.12,
+      "danger": 0.10
+    },
+    "stanceHeatDelta": {
+      "want": 4,
+      "reject": 8,
+      "ambivalent": 12
+    },
+    "objectLinkDelta": {
+      "heatDecayBeforeAdd": 0.8,
+      "maxTopLinks": 5
+    },
+    "relationDelta": {
+      "attention": 3,
+      "awkward": 2,
+      "suspicion": 0,
+      "debt": 0,
+      "fun": 1
+    },
+    "reasonRelationDelta": {
+      "danger": {
+        "attention": 2,
+        "awkward": 4,
+        "suspicion": 2,
+        "fun": 1
+      },
+      "forbidden": {
+        "attention": 3,
+        "awkward": 5,
+        "suspicion": 1,
+        "debt": 1,
+        "fun": 2
+      },
+      "awkward": {
+        "attention": 3,
+        "awkward": 6,
+        "debt": 1,
+        "fun": 3
+      },
+      "debt": {
+        "attention": 2,
+        "awkward": 3,
+        "debt": 5,
+        "fun": 2
+      },
+      "joke": {
+        "attention": 2,
+        "awkward": 2,
+        "fun": 5
+      },
+      "status": {
+        "attention": 2,
+        "awkward": 3,
+        "debt": 3,
+        "fun": 2
+      }
+    },
+    "stageThresholds": {
+      "new": 0,
+      "repeated": 35,
+      "noticed": 70,
+      "gagged": 105,
+      "ritualized": 140
+    }
+  },
+  "memoryDecayConfig": {
+    "traceExpireTicks": 1800,
+    "sceneTickDecay": 0.98,
+    "sceneEndDecay": 0.5,
+    "removeBelowHeat": 15
+  }
+}

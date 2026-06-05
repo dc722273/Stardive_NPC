@@ -1,0 +1,15 @@
+.godot/
+.godot-user/
+.godot-test.log
+.import/
+.superpowers/
+.worktrees/
+.claude/
+
+# LLM secrets: ignore real .env, keep tracked .env.example
+.env
+!.env.example
+
+tools/godot/downloads/
+tools/godot/Godot_v*.exe
+tools/godot/godot.exe

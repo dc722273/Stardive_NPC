@@ -1,0 +1,26 @@
+{
+  "phase": "post",
+  "label": "",
+  "oracle_cmd": [
+    "python",
+    "apr\\place-registry-walkable\\oracle\\run_place_registry_walkable_oracle.py"
+  ],
+  "oracle_exit_code": 0,
+  "outcome": "PASS",
+  "infra_codes": [
+    2,
+    3
+  ],
+  "run_error": null,
+  "timeout_sec": 300.0,
+  "contract_held": true,
+  "verdict": "HELD: post oracle PASSED — change verified against the same oracle.",
+  "duration_sec": 0.618,
+  "env": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.10",
+    "cwd": "<repo-root>",
+    "epoch": 1780569822
+  },
+  "output_tail": "Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org\n\nPLACE_REGISTRY_WALKABLE_ORACLE: PASS\n"
+}
