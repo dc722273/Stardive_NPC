@@ -2,29 +2,50 @@
   "objectTypes": {
     "diet_coke": {
       "id": "diet_coke",
-      "name": "川普专属健怡可乐",
+      "name": "健怡可乐",
+      "aliases": ["可乐", "一瓶可乐", "健怡可乐"],
       "category": "drink",
+      "classification": {
+        "category": "drink",
+        "subtype": "soda",
+        "material": "aluminum"
+      },
+      "visual": {
+        "iconText": "COKE"
+      },
       "defaultSocial": {
         "status": 80,
-        "utility": 50,
-        "debt": 60,
+        "power": 20,
+        "utility": 40,
+        "debt": 50,
         "awkward": 90,
         "joke": 95,
-        "danger": 5
+        "danger": 0
       },
       "defaultAffordance": {
         "draggable": true,
         "openable": true,
-        "consumable": true
+        "consumable": true,
+        "discardable": true
       }
     },
     "jiu_tong_gun": {
       "id": "jiu_tong_gun",
-      "name": "九筒的枪",
+      "name": "九筒的手枪",
+      "aliases": ["枪", "手枪", "九筒的枪", "九筒的手枪"],
       "category": "weapon",
+      "classification": {
+        "category": "weapon",
+        "subtype": "handgun",
+        "material": "metal"
+      },
+      "visual": {
+        "iconText": "枪"
+      },
       "defaultSocial": {
-        "status": 75,
-        "utility": 10,
+        "status": 65,
+        "power": 90,
+        "utility": 15,
         "debt": 20,
         "awkward": 85,
         "joke": 70,
@@ -33,7 +54,124 @@
       "defaultAffordance": {
         "draggable": true,
         "openable": false,
-        "consumable": false
+        "consumable": false,
+        "discardable": true
+      }
+    },
+    "gold_cup": {
+      "id": "gold_cup",
+      "name": "金杯",
+      "aliases": ["金杯", "杯子", "贵重杯子"],
+      "category": "valuable",
+      "classification": {
+        "category": "valuable",
+        "subtype": "cup",
+        "material": "gold"
+      },
+      "visual": {
+        "iconText": "杯"
+      },
+      "defaultSocial": {
+        "status": 95,
+        "power": 25,
+        "utility": 25,
+        "debt": 85,
+        "awkward": 70,
+        "joke": 60,
+        "danger": 0
+      },
+      "defaultAffordance": {
+        "draggable": true,
+        "openable": false,
+        "consumable": false,
+        "discardable": true
+      }
+    },
+    "shiye_ledger": {
+      "id": "shiye_ledger",
+      "name": "师爷的账本",
+      "aliases": ["账本", "师爷的账本"],
+      "category": "document",
+      "classification": {
+        "category": "document",
+        "subtype": "ledger",
+        "material": "paper"
+      },
+      "visual": {
+        "iconText": "账"
+      },
+      "defaultSocial": {
+        "status": 50,
+        "power": 70,
+        "utility": 75,
+        "debt": 20,
+        "awkward": 80,
+        "joke": 85,
+        "danger": 0
+      },
+      "defaultAffordance": {
+        "draggable": true,
+        "openable": true,
+        "consumable": false,
+        "discardable": false
+      }
+    },
+    "dollars_stack": {
+      "id": "dollars_stack",
+      "name": "一叠刀乐",
+      "aliases": ["刀乐", "一叠刀乐", "钱", "美元"],
+      "category": "cash",
+      "classification": {
+        "category": "cash",
+        "subtype": "dollars",
+        "material": "paper"
+      },
+      "visual": {
+        "iconText": "$"
+      },
+      "defaultSocial": {
+        "status": 75,
+        "power": 60,
+        "utility": 90,
+        "debt": 95,
+        "awkward": 90,
+        "joke": 80,
+        "danger": 10
+      },
+      "defaultAffordance": {
+        "draggable": true,
+        "openable": false,
+        "consumable": false,
+        "discardable": true
+      }
+    },
+    "seal_strip": {
+      "id": "seal_strip",
+      "name": "封条",
+      "aliases": ["封条", "封条纸"],
+      "category": "document",
+      "classification": {
+        "category": "document",
+        "subtype": "seal",
+        "material": "paper"
+      },
+      "visual": {
+        "iconText": "封"
+      },
+      "defaultSocial": {
+        "status": 40,
+        "power": 80,
+        "utility": 60,
+        "debt": 10,
+        "awkward": 85,
+        "joke": 90,
+        "danger": 0
+      },
+      "defaultAffordance": {
+        "draggable": true,
+        "openable": false,
+        "consumable": false,
+        "discardable": true
       }
     }
   },
@@ -45,11 +183,14 @@
       "accessRule": {
         "allowedNpcIds": ["trump"],
         "publicKnown": true,
-        "exclusivity": 95
+        "exclusivity": 75
       },
       "currentAnchor": {
-        "type": "npc",
-        "npcId": "trump"
+        "type": "ground"
+      },
+      "current_cell": {
+        "x": 16,
+        "y": 9
       },
       "custodyState": "normal",
       "state": {
@@ -67,11 +208,90 @@
       "accessRule": {
         "allowedNpcIds": ["jiu_tong"],
         "publicKnown": true,
-        "exclusivity": 85
+        "exclusivity": 90
       },
       "currentAnchor": {
         "type": "npc",
         "npcId": "jiu_tong"
+      },
+      "custodyState": "normal",
+      "state": {
+        "opened": false,
+        "consumed": 0
+      },
+      "memory": {
+        "topLinks": []
+      }
+    },
+    {
+      "id": "gold_cup",
+      "typeId": "gold_cup",
+      "currentAnchor": {
+        "type": "ground"
+      },
+      "current_cell": {
+        "x": 14,
+        "y": 9
+      },
+      "custodyState": "normal",
+      "state": {
+        "opened": false,
+        "consumed": 0
+      },
+      "memory": {
+        "topLinks": []
+      }
+    },
+    {
+      "id": "shiye_ledger",
+      "typeId": "shiye_ledger",
+      "ownerId": "shi_ye",
+      "accessRule": {
+        "allowedNpcIds": ["shi_ye"],
+        "publicKnown": true,
+        "exclusivity": 80
+      },
+      "currentAnchor": {
+        "type": "npc",
+        "npcId": "shi_ye"
+      },
+      "custodyState": "normal",
+      "state": {
+        "opened": false,
+        "consumed": 0
+      },
+      "memory": {
+        "topLinks": []
+      }
+    },
+    {
+      "id": "dollars_stack",
+      "typeId": "dollars_stack",
+      "currentAnchor": {
+        "type": "ground"
+      },
+      "current_cell": {
+        "x": 16,
+        "y": 14
+      },
+      "custodyState": "normal",
+      "state": {
+        "opened": false,
+        "consumed": 0
+      },
+      "memory": {
+        "topLinks": []
+      }
+    },
+    {
+      "id": "seal_strip",
+      "typeId": "seal_strip",
+      "currentAnchor": {
+        "type": "ground"
+      },
+      "current_cell": {
+        "x": 13,
+        "y": 12
       },
       "custodyState": "normal",
       "state": {

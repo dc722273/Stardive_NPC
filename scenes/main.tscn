@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://ai_npc_emergence_main"]
+[gd_scene load_steps=8 format=3 uid="uid://ai_npc_emergence_main"]
 
 [ext_resource type="Script" path="res://scripts/MainGame.gd" id="1_main_game"]
 [ext_resource type="Script" path="res://scripts/ui/GridSelectionOverlay.gd" id="2_grid_selection"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/ui/FencedAreaEditPanel.gd" id="4_fenced_panel"]
 [ext_resource type="Script" path="res://scripts/ui/EntityVisualLayer.gd" id="5_entity_visual"]
 [ext_resource type="Script" path="res://scripts/ui/ScheduleSidebar.gd" id="6_schedule_sidebar"]
+[ext_resource type="Script" path="res://scripts/ui/NPCChatPanel.gd" id="7_npc_chat"]
 
 [node name="GameRoot" type="Node2D"]
 script = ExtResource("1_main_game")
@@ -72,3 +73,13 @@ offset_top = 0.0
 offset_right = 900.0
 offset_bottom = 16.0
 text = "Day 1 · 00:00"
+
+[node name="NPCChatPanel" type="PanelContainer" parent="UI"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -624.0
+offset_right = 1168.0
+offset_bottom = -16.0
+script = ExtResource("7_npc_chat")

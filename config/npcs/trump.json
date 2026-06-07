@@ -1,6 +1,9 @@
 {
   "id": "trump",
   "name": "特朗普",
+  "visual": {
+    "markerPath": "res://assets/map_markers/特朗普小球.png"
+  },
   "tile_x": 16,
   "tile_y": 8,
   "traits": {
@@ -11,6 +14,37 @@
     "play": 72
   },
   "tags": ["authority", "status_anxious", "over_denial", "private_favoritism"],
+  "aliases": ["川普", "特朗普"],
+  "preference": {
+    "classificationAffinity": {
+      "drink": 8,
+      "drink.soda": 26,
+      "valuable": 18,
+      "valuable.cup": 22,
+      "cash": 12,
+      "cash.dollars": 16,
+      "weapon": 4,
+      "weapon.handgun": 8,
+      "document": -4,
+      "document.ledger": -18,
+      "document.seal": -24
+    },
+    "socialAffinity": {
+      "status": 36,
+      "power": 28,
+      "utility": 18,
+      "debt": -16,
+      "awkward": -18,
+      "joke": 8,
+      "danger": -20
+    },
+    "tolerance": {
+      "danger": 56,
+      "debt": 78,
+      "awkward": 46,
+      "repetition": 70
+    }
+  },
   "style": {
     "leakActions": ["glance_object", "tap_stop", "blush"],
     "coverActions": ["straighten_clothes", "fake_serious", "look_away"],

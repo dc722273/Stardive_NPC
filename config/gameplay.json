@@ -1,4 +1,60 @@
 {
+  "world": {
+    "backgroundPath": "res://assets/bg/鹅城地图.png"
+  },
+  "ui": {
+    "messages": {
+      "ready": "Ready",
+      "llmServicesMissing": "LLM services not wired",
+      "requestDailyTodos": "Requesting daily todos from LLM...",
+      "llmDisabledFallback": "LLM disabled / fallback (set OPENROUTER_API_KEY in .env)",
+      "dailyPlanSuperseded": "NPC {npc_id} daily plan superseded by newer request",
+      "dailyTodosReady": "NPC {npc_id} daily todos: {count}",
+      "dailyFallbackReady": "LLM disabled / fallback wander for NPC {npc_id}",
+      "saved": "Saved",
+      "noSaveSnapshot": "No save snapshot",
+      "loaded": "Loaded",
+      "selectedEntity": "Selected {entity_id}",
+      "selectedCell": "Selected cell {cell}",
+      "droppedEntity": "Dropped {entity_id}",
+      "npcAcceptedItemFallback": "NPC accepted item",
+      "npcTouchedItemFallback": "NPC touched item",
+      "rightClickDiscardHint": "Right-click an NPC with a held item to discard",
+      "discardedHeldItem": "Discarded held item",
+      "noHeldItemToDiscard": "No held item to discard",
+      "fencedAreaMode": "FencedArea mode {mode}",
+      "fencedAreaSizeHint": "FencedArea needs at least 3x3",
+      "fencedAreaDragHint": "Drag a 3x3 or larger fenced area",
+      "fencedAreaCreated": "Created {place_name}",
+      "fencedAreaFailed": "FencedArea failed: {reason}",
+      "fencedAreaFootprint": "FencedArea footprint {rect}"
+    },
+    "controls": {
+      "collapsedText": "[H] 控制说明",
+      "expandedText": "[H] 收起\nWASD 移动镜头\n空白处左键拖动画布\nF 建造模式\n滚轮 缩放\n左键 选中/拖拽\n右键 丢弃手持物\nCtrl+S 保存 / Ctrl+L 读取"
+    },
+    "feedbackLabel": {
+      "position": [16, 16],
+      "size": [420, 32]
+    },
+    "chatPanel": {
+      "maxHistory": 10,
+      "uiScale": 2.0,
+      "panelSize": [1120, 520],
+      "historySize": [1088, 392],
+      "selectorSize": [240, 60],
+      "inputHeight": 60,
+      "sendSize": [120, 60],
+      "fontSize": 32,
+      "placeholderText": "说点什么",
+      "sendText": "发送",
+      "playerSpeakerTemplate": "你 -> {npc_name}"
+    }
+  },
+  "chat": {
+    "transferMarkers": ["转交给", "送给", "给了", "交给", "递给", "拿给"],
+    "pronounRecipients": ["他", "她", "它", "ta", "TA"]
+  },
   "free_roam": {
     "enabled": true,
     "move_speed": 44,
@@ -43,6 +99,13 @@
         "tags": ["账本", "算盘", "把柄"]
       }
     ],
+    "defaultTodo": {
+      "idTemplate": "todo_{npc_id}_seed_wander",
+      "intent": "wander",
+      "reasonTemplate": "{npc_name}先在现场观察情况",
+      "priority": 10,
+      "status": "pending"
+    },
     "intentions": {
       "trump": [
         {
@@ -52,9 +115,9 @@
           "locations": [{ "location": "mansion_porch", "weight": 3 }, { "location": "inner_lawn", "weight": 3 }]
         },
         {
-          "id": "find_coke",
-          "label": "找健怡可乐",
-          "motive": "尊贵感需要一瓶可乐撑场面",
+          "id": "check_supply",
+          "label": "检查庄园补给",
+          "motive": "确认现场物资没有被人随便挪走",
           "locations": [{ "location": "mansion_porch", "weight": 2 }, { "location": "inner_lawn", "weight": 1 }]
         }
       ],
@@ -76,6 +139,151 @@
       ]
     }
   },
+  "interactionTemplates": {
+    "eventText": {
+      "itemDirect": "{target_name}与{item_name}发生直接互动",
+      "itemTransfer": "{item_name}从{previous_name}转移到{target_name}身上",
+      "itemMisplaced": "{target_name}手里突然多了{item_name}，原本属于{owner_name}",
+      "autoDrop": "{target_name}接到{item_name}后主动丢到地上",
+      "npcEncounterRecent": "{primary_name}被观察者拖到{target_name}身边，现场被迫开聊",
+      "npcEncounter": "{primary_name}被拖到{target_name}身边，实时对话开始"
+    },
+    "itemParticipantActions": {
+      "targetOwnedLabel": "正在处理自己的{item_name}",
+      "targetOwnedMotive": "确认这个道具还属于自己，并把态度表现出来",
+      "targetTransferLabel": "从{previous_name}手里接过{item_name}",
+      "targetTransferMotive": "先回应这个可见交接，判断它是示好、栽赃、试探，还是被迫保管",
+      "targetMisplacedLabel": "手里突然多了{item_name}（原本属于{owner_name}）",
+      "targetMisplacedMotive": "先解释这件不属于自己的东西为什么在自己手里，避免被扣成偷拿或栽赃",
+      "targetDesiredOutcome": "先用动作处理这个社交事故，再用短句解释、遮掩或反击。",
+      "previousLabel": "把{item_name}交到{target_name}身上",
+      "previousMotive": "这个转交动作会暴露占有、偏爱、试探或被迫让步",
+      "previousDesiredOutcome": "必须回应为什么愿意/被迫交出这个道具。",
+      "witnessLabel": "在{radius_meters}m内看见{item_name}到了{target_name}手里",
+      "witnessMotive": "把目击到的道具归属变化解读成把柄、笑料、怀疑或台阶",
+      "witnessDesiredOutcome": "只围绕眼前道具归属变化起哄、追问、护短或记账。"
+    },
+    "meetingParticipantActions": {
+      "label": "观察眼前社交压力",
+      "motive": "按 traits、style 和当前身体状态回应被拖到一起的现场",
+      "desiredOutcome": "让关系、尴尬、怀疑、乐子或亏欠至少有一个发生变化。"
+    },
+    "itemSceneSeed": {
+      "solo": {
+        "type": "solo_item_interaction",
+        "title": "{target_name}处理{item_name}",
+        "visibleTopic": "{target_name}正在和{item_name}互动：确认、护住、收回或重新摆放，不牵涉其他 NPC",
+        "goal": "生成一句短而有角色味的单人道具反应；先回应{item_name}现在在{target_name}手里，再体现他的动作、情绪或占有态度。",
+        "consequence": "1句内结束：留下一个清楚的动作、情绪或占有态度。"
+      },
+      "transfer": {
+        "type": "item_transfer",
+        "title": "{previous_name}交给{target_name}",
+        "visibleTopic": "{item_name}刚从{previous_name}身上转到{target_name}身上；这不是凭空出现，而是一次可见的交接",
+        "goal": "先回应交接动作本身，再演出{item_name}归属变化造成的占有、嫌疑、偏爱或亏欠。",
+        "consequence": "4句内留下明确道具后果：谁暂时持有、谁被怀疑或被维护、关系/信任/怨气哪一项变化。"
+      },
+      "misplacedVisibleTopic": "{target_name}手里突然多了{item_name}；这件东西原本属于{owner_name}。重点是{target_name}如何处理这个突兀转手：护住、甩开、解释、试探或借题发挥。",
+      "witness": {
+        "type": "item_witness_interaction",
+        "title": "{target_name}处理{item_name}被{witness_name}看见",
+        "visibleTopic": "{target_name}正在处理{item_name}，{witness_name}在{radius_meters}m内看见并被卷入",
+        "goal": "先回应{target_name}正在处理{item_name}这件事，再让旁观者给出符合人设的目击反应。",
+        "consequence": "4句内留下目击后果：尴尬、起哄、怀疑、维护、关系变化或新把柄之一。"
+      },
+      "triggerAction": "观察者拖拽道具：{item_name} -> {target_name}",
+      "conflictQuestion": "{item_name}为什么会在{target_name}手里？现场要把占有、嫌疑、偏爱、亏欠或笑料演出来。",
+      "requiredShift": ["micro_action_seen", "object_consequence", "relation_pressure_shift"],
+      "allowedOutcomes": ["质问", "遮掩", "起哄", "推回", "临时保管", "形成梗"],
+      "stakes": "这个道具会改变谁被怀疑、谁欠谁解释、谁获得乐子或把柄。",
+      "emotionalCharge": {"solo": 64, "transfer": 78}
+    },
+    "npcSceneSeed": {
+      "type": "activity_collision",
+      "title": "{primary_name}撞见{target_name}",
+      "triggerAction": "观察者把两名 NPC 拖到一起",
+      "visibleTopic": "{primary_name}被拖到{target_name}身边，双方必须先回应眼前距离和正在做的事。",
+      "emotionalCharge": 62,
+      "conflictQuestion": "这次被迫靠近会制造尴尬、试探、起哄、怀疑还是临时合作？",
+      "requiredShift": ["relationship_change"],
+      "allowedOutcomes": ["试探", "反击", "起哄", "让步", "形成临时目标"],
+      "stakes": "对话必须留下关系或行动后果。",
+      "goal": "把普通相遇变成一次关系试探，让好感、尴尬、怀疑、乐子或亏欠至少有一个发生变化。",
+      "consequence": "4句内必须留下明确后果，不能只是互相调侃后散开。"
+    },
+    "preemptiveItemGag": {
+      "fallbackLine": "{npc_name}已经认出{item_name}，又把身体反应提前了一拍。",
+      "eventText": "{item_name}刚被拖起，{npc_name}已经预判：{line}",
+      "recentAction": "{item_name}刚被拖起，{npc_name}已经预判",
+      "sceneSeed": {
+        "type": "preemptive_item_gag",
+        "title": "{npc_name}预判{item_name}",
+        "visibleTopic": "{item_name}刚被玩家拖起，{npc_name}已经因为之前的训练提前做出身体反应：{line}",
+        "triggerAction": "玩家刚拖起一个已经形成身体梗的物品",
+        "requiredShift": ["preemptive_body_gag"],
+        "allowedOutcomes": ["后退", "举手", "遮掩", "抢先撇清"],
+        "goal": "表现 NPC 已经学会预判这个物品。",
+        "consequence": "1句内让玩家感到这是被训练出来的反应。"
+      }
+    },
+    "playerChat": {
+      "participantLabel": "回应玩家直接说的话",
+      "participantMotive": "把玩家的话当成刚发生在眼前的信息来判断、追问或反击",
+      "participantDesiredOutcome": "用一句有角色味的回应承接这句话，并留下态度或下一步反应。",
+      "recentAction": "玩家对{npc_name}说：{message}",
+      "eventText": "玩家对{npc_name}说：{message}",
+      "relationshipHint": "这是玩家直接对该 NPC 说的话，NPC 应按自身性格回应，而不是旁白总结。",
+      "sceneSeed": {
+        "type": "player_chat",
+        "title": "玩家告诉{npc_name}：{message}",
+        "triggerAction": "玩家通过聊天频道直接告诉 NPC 一句话",
+        "visibleTopic": "玩家刚对{npc_name}说：{message}。{npc_name}必须把这句话当作当前输入来回应。",
+        "emotionalCharge": 48,
+        "conflictQuestion": "这句话会让{npc_name}相信、怀疑、追问、否认还是借题发挥？",
+        "requiredShift": ["npc_attitude_seen"],
+        "allowedOutcomes": ["回应", "追问", "否认", "试探", "借题发挥"],
+        "stakes": "聊天内容会进入 NPC 对当前局面的理解。",
+        "goal": "直接回应玩家告诉他的内容，不要无视玩家消息。",
+        "consequence": "1句内给出明确态度。"
+      }
+    },
+    "reportedTransfer": {
+      "sceneTriggerAction": "玩家通过聊天频道声明一件世界事件",
+      "worldFact": "运行时已按这句话把{item_name}从{giver_name}转移到{recipient_name}身上",
+      "autoDropWorldFact": "运行时已按这句话让{recipient_name}接到{item_name}，随后{recipient_name}已把它丢到地上",
+      "visibleTopic": "玩家告诉{target_name}：{message}。{world_fact}；{target_name}要按这件事已经发生来回应。",
+      "recentAction": "玩家告诉{target_name}：{message}",
+      "eventText": "玩家告诉{target_name}：{message}"
+    },
+    "relationshipHints": {
+      "itemTransfer": "这是明确的物品交接，不是捡到或凭空出现；NPC必须回应{item_name}为什么从{previous_name}到{target_name}。",
+      "itemWitness": "这是道具近距离目击事件，旁观者可以起哄、误读或追问，但必须围绕{item_name}现在在{target_name}手里。",
+      "itemSolo": "这是单人道具反应，只表现 NPC 与物品的关系，不牵涉其他 NPC。",
+      "npcEncounter": "观察者强制拉近距离，NPC需要立刻回应眼前关系和刚才的行为。"
+    }
+  },
+  "autoDropThreshold": {
+    "base": 3,
+    "min": 2,
+    "max": 5,
+    "candidate": {
+      "results": ["accept_then_discard"],
+      "rejectAny": [
+        {"field": "reason", "eq": "forbidden"},
+        {"field": "reject_margin", "gte": 30}
+      ]
+    },
+    "factors": [
+      {"name": "danger", "delta": -1, "any": [{"field": "reason", "eq": "danger"}, {"source": "social", "field": "danger", "gte": 80}]},
+      {"name": "high_caution", "delta": -1, "all": [{"source": "traits", "field": "caution", "gte": 75}]},
+      {"name": "avoid_responsibility", "delta": -1, "all": [{"source": "tags", "has": "avoid_responsibility"}]},
+      {"name": "awkward_pressure", "delta": -1, "all": [{"source": "social", "field": "awkward", "gte": 85}, {"source": "traits", "field": "caution", "gte": 60}]},
+      {"name": "high_face", "delta": 1, "all": [{"source": "traits", "field": "face", "gte": 75}]},
+      {"name": "high_control", "delta": 1, "all": [{"source": "traits", "field": "control", "gte": 75}]},
+      {"name": "valuable_object", "delta": 1, "any": [{"source": "social", "field": "status", "gte": 70}, {"source": "social", "field": "utility", "gte": 70}]},
+      {"name": "plays_with_gag", "delta": 1, "all": [{"source": "social", "field": "joke", "gte": 80}, {"source": "traits", "field": "play", "gte": 70}]}
+    ]
+  },
   "interactionDeltaConfig": {
     "baseHeatDelta": 18,
     "objectHeatWeights": {
@@ -84,61 +292,19 @@
       "debt": 0.08,
       "awkward": 0.10,
       "joke": 0.12,
-      "danger": 0.10
+      "danger": 0.10,
+      "power": 0.04
     },
     "stanceHeatDelta": {
-      "want": 4,
+      "like": 4,
       "reject": 8,
-      "ambivalent": 12
+      "ambivalent": 12,
+      "like_then_reject": 14,
+      "accept_then_discard": 18
     },
     "objectLinkDelta": {
       "heatDecayBeforeAdd": 0.8,
       "maxTopLinks": 5
-    },
-    "relationDelta": {
-      "attention": 3,
-      "awkward": 2,
-      "suspicion": 0,
-      "debt": 0,
-      "fun": 1
-    },
-    "reasonRelationDelta": {
-      "danger": {
-        "attention": 2,
-        "awkward": 4,
-        "suspicion": 2,
-        "fun": 1
-      },
-      "forbidden": {
-        "attention": 3,
-        "awkward": 5,
-        "suspicion": 1,
-        "debt": 1,
-        "fun": 2
-      },
-      "awkward": {
-        "attention": 3,
-        "awkward": 6,
-        "debt": 1,
-        "fun": 3
-      },
-      "debt": {
-        "attention": 2,
-        "awkward": 3,
-        "debt": 5,
-        "fun": 2
-      },
-      "joke": {
-        "attention": 2,
-        "awkward": 2,
-        "fun": 5
-      },
-      "status": {
-        "attention": 2,
-        "awkward": 3,
-        "debt": 3,
-        "fun": 2
-      }
     },
     "stageThresholds": {
       "new": 0,
@@ -146,6 +312,150 @@
       "noticed": 70,
       "gagged": 105,
       "ritualized": 140
+    },
+    "stageOrder": ["new", "repeated", "noticed", "gagged", "ritualized"],
+    "defaultPreference": {
+      "classificationAffinity": {},
+      "socialAffinity": {},
+      "tolerance": {
+        "danger": 50,
+        "debt": 50,
+        "awkward": 50,
+        "repetition": 50
+      }
+    },
+    "giftStance": {
+      "toleranceMax": 100,
+      "traitDefault": 50,
+      "forbiddenPressureMin": 35,
+      "wantWeights": {
+        "utility": 0.30,
+        "status": 0.25,
+        "power": 0.20,
+        "joke": 0.08,
+        "ownerBonus": 28
+      },
+      "pressureWeights": {
+        "danger": 0.018,
+        "debt": 0.014,
+        "awkward": 0.018,
+        "forbidden": 0.70
+      },
+      "fatigue": {
+        "countOffset": 1,
+        "toleranceScale": 0.15
+      },
+      "result": {
+        "margin": 25,
+        "likeThenRejectFatigue": 40
+      },
+      "acceptThenDiscard": {
+        "baseThreshold": 70,
+        "fatigueWeight": 0.55,
+        "pressureFallback": 70,
+        "fatigueFallback": 30,
+        "traitAdjustments": [
+          {"field": "caution", "above": 65, "scale": -0.35},
+          {"field": "face", "above": 65, "scale": 0.25},
+          {"field": "control", "above": 70, "scale": 0.15},
+          {"field": "play", "above": 70, "scale": 0.10}
+        ]
+      },
+      "dominantReasonPriority": ["danger", "power", "awkward", "joke", "debt", "status", "utility"]
+    },
+    "runtimeState": {
+      "performanceByResult": {
+        "like": "approaching",
+        "reject": "pulling_away",
+        "accept_then_discard": "discarding",
+        "default": "hesitating"
+      },
+      "emotionByReason": {
+        "danger": {"default": "nervous"},
+        "forbidden": {"reject": "defensive", "default": "awkward"},
+        "awkward": {"reject": "defensive", "default": "awkward"},
+        "debt": {"reject": "defensive", "default": "awkward"},
+        "joke": {"default": "amused"},
+        "status": {"default": "smug"},
+        "default": "curious"
+      }
+    },
+    "performancePlan": {
+      "defaultStage": "new",
+      "defaultPattern": "single_reaction",
+      "largeStages": ["noticed", "gagged", "ritualized"],
+      "defaultScale": "small",
+      "largeScale": "medium",
+      "trainedStages": ["repeated", "noticed", "gagged", "ritualized"],
+      "stagePatterns": {
+        "repeated": "leak_cover",
+        "noticed": "preemptive_gag",
+        "gagged": "gag_callback",
+        "ritualized": "ritualized_gag"
+      },
+      "newResultPatterns": {
+        "reject": "reject_object",
+        "accept_then_discard": "reject_object",
+        "like": "want_but_cover",
+        "like_then_reject": "want_but_cover"
+      },
+      "expressionByResult": {
+        "like": "smug",
+        "like_then_reject": "awkward",
+        "reject": "defensive",
+        "accept_then_discard": "defensive",
+        "ambivalent": "awkward"
+      },
+      "expressionByReason": {
+        "danger": "nervous",
+        "forbidden": "defensive",
+        "awkward": "awkward",
+        "debt": "awkward",
+        "joke": "amused",
+        "status": "smug"
+      },
+      "steps": [
+        {"channel": "gaze", "action": "glance_object"},
+        {"channel": "speech"}
+      ]
+    },
+    "witnessRelationDelta": {
+      "attention": 2,
+      "awkward": 1,
+      "suspicion": 0,
+      "debt": 0,
+      "fun": 2
+    },
+    "giftRelationDelta": {
+      "like": {
+        "attention": {"base": 4},
+        "warmth": {"source": "like", "scale": 0.08},
+        "debt": {"source": "pressure", "scale": 0.04},
+        "awkward": {"source": "pressure", "scale": 0.03, "minSource": "pressure", "min": 40}
+      },
+      "reject": {
+        "attention": {"base": 3},
+        "awkward": {"source": "reject", "scale": 0.08},
+        "suspicion": {"source": "pressure", "scale": 0.04}
+      },
+      "ambivalent": {
+        "attention": {"base": 5},
+        "warmth": {"source": "like", "scale": 0.04},
+        "debt": {"source": "pressure", "scale": 0.08},
+        "awkward": {"source": "pressure", "scale": 0.06}
+      },
+      "like_then_reject": {
+        "attention": {"base": 4},
+        "warmth": {"source": "like", "scale": 0.02},
+        "awkward": {"source": "fatigue", "scale": 0.08},
+        "fun": {"source": "fatigue", "scale": 0.04}
+      },
+      "accept_then_discard": {
+        "attention": {"base": 6},
+        "awkward": {"base": 8},
+        "suspicion": {"base": 4},
+        "fun": {"base": 5}
+      }
     }
   },
   "memoryDecayConfig": {

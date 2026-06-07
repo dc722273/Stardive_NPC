@@ -17,6 +17,7 @@ const DEFAULT_AFFORDANCE := {
 
 const DEFAULT_SOCIAL := {
 	"status": 0,
+	"power": 0,
 	"utility": 0,
 	"debt": 0,
 	"awkward": 0,
@@ -24,10 +25,17 @@ const DEFAULT_SOCIAL := {
 	"danger": 0,
 }
 
+const DEFAULT_CLASSIFICATION := {
+	"category": "",
+	"subtype": "",
+	"material": "",
+}
+
 var id: StringName = &""
 var type_id: StringName = &""
 var name: String = ""
 var category: String = ""
+var classification: Dictionary = DEFAULT_CLASSIFICATION.duplicate(true)
 var owner_id: StringName = &""
 var access_rule: Dictionary = DEFAULT_ACCESS_RULE.duplicate(true)
 var current_anchor: Dictionary = {"type": "ground"}
@@ -35,6 +43,7 @@ var custody_state: String = "unclaimed"
 var affordance: Dictionary = DEFAULT_AFFORDANCE.duplicate(true)
 var social: Dictionary = DEFAULT_SOCIAL.duplicate(true)
 var social_override: Dictionary = {}
+var visual: Dictionary = {}
 var state: Dictionary = {}
 var memory: Dictionary = {"topLinks": []}
 var current_cell: Vector2i = Vector2i.ZERO
@@ -48,8 +57,14 @@ static func from_dict(data: Dictionary, object_types: Dictionary = {}):
 	var object_type: Dictionary = _dict_from(object_types.get(str(object.type_id), object_types.get(object.type_id, {})))
 	var type_social: Dictionary = _dict_from(object_type.get("defaultSocial", {}))
 	var type_affordance: Dictionary = _dict_from(object_type.get("defaultAffordance", {}))
+	var type_classification: Dictionary = _dict_from(object_type.get("classification", {}))
+	if type_classification.is_empty() and object_type.has("category"):
+		type_classification = {"category": str(object_type.get("category", ""))}
+	var instance_classification: Dictionary = _dict_from(data.get("classification", {}))
 	object.name = str(data.get("name", object_type.get("name", object.id)))
-	object.category = str(data.get("category", object_type.get("category", "")))
+	object.classification = _merge_dict(_merge_dict(DEFAULT_CLASSIFICATION, type_classification), instance_classification)
+	object.category = str(data.get("category", object.classification.get("category", object_type.get("category", ""))))
+	object.classification["category"] = object.category
 	object.owner_id = StringName(data.get("ownerId", ""))
 	object.access_rule = _merge_dict(DEFAULT_ACCESS_RULE, data.get("accessRule", {}))
 	object.current_anchor = _dict_from(data.get("currentAnchor", {"type": "ground"}))
@@ -57,6 +72,7 @@ static func from_dict(data: Dictionary, object_types: Dictionary = {}):
 	object.affordance = _merge_dict(_merge_dict(DEFAULT_AFFORDANCE, type_affordance), data.get("affordance", {}))
 	object.social_override = _dict_from(data.get("social", {}))
 	object.social = _merge_dict(_merge_dict(DEFAULT_SOCIAL, type_social), object.social_override)
+	object.visual = _merge_dict(_dict_from(object_type.get("visual", {})), data.get("visual", {}))
 	object.state = _dict_from(data.get("state", {}))
 	object.memory = _merge_dict({"topLinks": []}, data.get("memory", {}))
 

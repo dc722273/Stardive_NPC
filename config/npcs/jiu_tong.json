@@ -1,6 +1,9 @@
 {
   "id": "jiu_tong",
   "name": "九筒",
+  "visual": {
+    "markerPath": "res://assets/map_markers/九筒小球.png"
+  },
   "tile_x": 13,
   "tile_y": 14,
   "traits": {
@@ -11,6 +14,36 @@
     "play": 36
   },
   "tags": ["debt_avoidant", "strategic_observer", "avoid_responsibility"],
+  "aliases": ["九筒"],
+  "preference": {
+    "classificationAffinity": {
+      "weapon": -10,
+      "weapon.handgun": -8,
+      "drink": 2,
+      "drink.soda": 4,
+      "valuable": -10,
+      "cash": -18,
+      "cash.dollars": -22,
+      "document": -12,
+      "document.ledger": -24,
+      "document.seal": -20
+    },
+    "socialAffinity": {
+      "status": -8,
+      "power": -20,
+      "utility": 12,
+      "debt": -34,
+      "awkward": -30,
+      "joke": -8,
+      "danger": -38
+    },
+    "tolerance": {
+      "danger": 18,
+      "debt": 32,
+      "awkward": 30,
+      "repetition": 34
+    }
+  },
   "style": {
     "leakActions": ["glance_target", "hand_freeze", "blink_twice"],
     "coverActions": ["deadpan", "look_away", "straighten_sleeve"],

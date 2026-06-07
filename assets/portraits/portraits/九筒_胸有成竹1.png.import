@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bcq72bqx50f40"
-path="res://.godot/imported/九筒_胸有成竹1.png-7a7ffb3de68c489dbff7772171315253.ctex"
+path="res://.godot/imported/九筒_胸有成竹1.png-f760f629f95901f0a78958b3e5f8a311.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/九筒_胸有成竹1.png"
-dest_files=["res://.godot/imported/九筒_胸有成竹1.png-7a7ffb3de68c489dbff7772171315253.ctex"]
+source_file="res://assets/portraits/portraits/九筒_胸有成竹1.png"
+dest_files=["res://.godot/imported/九筒_胸有成竹1.png-f760f629f95901f0a78958b3e5f8a311.ctex"]
 
 [params]
 

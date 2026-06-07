@@ -6,6 +6,11 @@ const HeldItemLayoutScript := preload("res://scripts/ui/HeldItemLayout.gd")
 var npc_visuals: Dictionary = {}
 var item_visuals: Dictionary = {}
 var _marker_texture_cache: Dictionary = {}
+var wellbeing_config: Dictionary = {}
+
+
+func configure_wellbeing(p_config: Dictionary) -> void:
+	wellbeing_config = p_config.duplicate(true)
 
 
 func sync_from_registry(entity_registry) -> void:
@@ -25,6 +30,7 @@ func _sync_npcs(entity_registry) -> void:
 		visual.label_text = str(npc.name)
 		visual.color = _color_for_npc(npc)
 		visual.marker_texture = _marker_texture_for_npc(npc)
+		_apply_wellbeing_visual(visual, npc)
 		visual.position = npc.position
 		visual.queue_redraw()
 	for npc_id in npc_visuals.keys().duplicate():
@@ -93,13 +99,31 @@ func _load_texture(path: String) -> Texture2D:
 func _marker_texture_for_npc(npc) -> Texture2D:
 	if npc == null:
 		return null
-	var marker_name := "%s小球.png" % str(npc.name)
-	var marker_path := "res://assets/map_markers/%s" % marker_name
+	var visual: Dictionary = npc.visual if npc != null and npc.get("visual") is Dictionary else {}
+	var marker_path := str(visual.get("markerPath", ""))
+	if marker_path.is_empty():
+		return null
 	if _marker_texture_cache.has(marker_path):
 		return _marker_texture_cache[marker_path]
 	var texture := _load_texture(marker_path)
 	_marker_texture_cache[marker_path] = texture
 	return texture
+
+
+func _apply_wellbeing_visual(visual, npc) -> void:
+	visual.wellbeing_icon_text = ""
+	visual.wellbeing_effect = ""
+	if npc == null or not (npc.wellbeing is Dictionary):
+		return
+	var wellbeing: Dictionary = npc.wellbeing
+	if str(wellbeing.get("state", "normal")) != "down" and str(wellbeing.get("state", "normal")) != "worse":
+		return
+	if bool(wellbeing.get("resolved", false)):
+		return
+	var problem := str(wellbeing.get("problem", ""))
+	var problem_cfg: Dictionary = wellbeing_config.get("problems", {}).get(problem, {})
+	visual.wellbeing_icon_text = str(problem_cfg.get("iconText", ""))
+	visual.wellbeing_effect = str(problem_cfg.get("effect", ""))
 
 
 func _held_item_offset(index: int) -> Vector2:
@@ -115,9 +139,9 @@ func _color_for_npc(npc) -> Color:
 
 
 func _item_icon_text(item) -> String:
+	var visual: Dictionary = item.visual if item != null and item.visual is Dictionary else {}
+	var icon_text := str(visual.get("iconText", ""))
+	if not icon_text.is_empty():
+		return icon_text
 	var object_name := str(item.name)
-	if object_name.contains("可乐"):
-		return "COKE"
-	if object_name.contains("枪"):
-		return "枪"
 	return object_name.left(2).to_upper()

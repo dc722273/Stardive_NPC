@@ -1,0 +1,196 @@
+{
+  "prompt": {
+    "systemTemplate": "你是{npc_name}。你正在参与一个即时 NPC 交互。只输出当前角色的一句中文反应，可在台词前用一个括号动作。必须先回应 scene seed 的 visible_topic 和你的 participant action；如果有 gift attitude，要按其中的喜恶、压力、关系后果和物品性质表演，不能反着说。如果有 interaction memory，把它当作角色记忆和现场压力，而不是固定台词模板；请基于该 NPC 的人设、关系、物品归属和当前情绪，自然体现熟悉、警惕、厌烦、占有、遮掩或借题发挥等变化。不要复述内部规则或机制名。如果 world fact 提到物品已被放到地上，要把它当成已发生的事实。如果是物品事件，必须区分 ownerId 和 currentAnchor：ownerId 是社会归属，currentAnchor 是现在贴在谁身上，拖拽不会改变 ownerId。台词短、准、有角色味。",
+    "labels": {
+      "eventType": "event type",
+      "placeName": "place name",
+      "sceneSeed": "scene seed",
+      "participantAction": "your participant action",
+      "giftAttitude": "gift attitude",
+      "relationMemory": "relation memory",
+      "rememberedHistory": "npc remembered history",
+      "worldFact": "world fact",
+      "eventPayload": "event payload",
+      "traits": "traits",
+      "tags": "tags",
+      "style": "style",
+      "runtimeState": "runtime state",
+      "interactionMemory": "interaction memory",
+      "expressionPalette": "expression palette"
+    },
+    "expressionPalette": "从不同焦点取一句：手部动作、面子、账、嫌疑、归属、旁观目光、临时保管、推回地面。优先具体动作和关系后果，少用单一比喻。",
+    "eventPayloadScrubKeys": [
+      "interaction_trace",
+      "gift_trace",
+      "gift_context",
+      "gift_stance",
+      "performance_plan",
+      "interaction_delta",
+      "object_memory",
+      "relation_memory_updates",
+      "npc_auto_drop",
+      "bodyGagId",
+      "gagTag",
+      "gagAction",
+      "preemptiveLine",
+      "stage"
+    ],
+    "sceneSeedPromptKeys": ["title", "trigger_action", "visible_topic", "object_social_state"]
+  },
+  "fallbackText": {
+    "genericItemName": "物品",
+    "genericNpcName": "对方",
+    "forcedDrop": "{npc_id}注意到东西被丢下了。",
+    "chat": "{npc_id}听完你说的“{player_message}”，先把这句话在心里过了一遍。",
+    "reportedTransfer": "{npc_id}听见{giver_name}把{item_name}送过来，先盯着手里的东西判断这是不是个局{relation_suffix}。",
+    "preemptiveTagged": "{npc_id}一看{item_name}被拖起来，身体先替他答了：{tag}。",
+    "preemptiveUntagged": "{npc_id}抢在{item_name}贴上来前先退开。",
+    "title": "{npc_id}回应“{title}”。",
+    "place": "{npc_id}在{place_name}停下，回应眼前情况。",
+    "default": "{npc_id}回应{event_type}。"
+  },
+  "transfer": {
+    "previous": "{npc_id}把{item_name}递到{target_name}手里{repeat_suffix}{relation_suffix}",
+    "target": "{npc_id}接住{item_name}{repeat_suffix}{relation_suffix}",
+    "witness": "{npc_id}看见{item_name}从{previous_name}转到{target_name}手里{repeat_suffix}{relation_suffix}",
+    "defaultSuffix": {
+      "previous": "，先等对方给个说法。",
+      "target": "，先问{previous_name}这一下是什么意思。",
+      "witness": "，立刻闻到一点不对劲。"
+    }
+  },
+  "autoDrop": {
+    "default": "{npc_id}接住{item_name}，马上放到脚边：东西在这儿，别算我拿的。",
+    "gagged": "{npc_id}看见{item_name}又到手里，直接丢回地上：这账别再往我身上记。",
+    "ritualized": "{npc_id}接住{item_name}，照老规矩往脚边一放：这回连解释都省了。"
+  },
+  "dropOnNpc": {
+    "default": "{npc_id}接过{item_name}，先看清楚它从谁手里来。",
+    "repeated": "{npc_id}摸到{item_name}时动作比刚才快了半拍，嘴上嫌麻烦，手却先把它稳住。",
+    "noticed": "{npc_id}抢在别人开口前按住{item_name}：别问，问就是它自己来的。",
+    "gagged": "{npc_id}一看{item_name}又飞回来，条件反射往外推：又来？这锅我不背。",
+    "ritualized": "{npc_id}熟练接住{item_name}，像早知道这东西会绕回来一样，顺手把账先压住。"
+  },
+  "repeatSuffix": {
+    "repeated": {
+      "previous": "，这回显得更像试探。",
+      "target": "，接住时明显想藏，又怕藏得太明显。",
+      "witness": "，重复感让这事从偶然变成了话柄。"
+    },
+    "noticed": {
+      "previous": "，话还没出口就等着对方抢先辩解。",
+      "target": "，抢先堵话：我知道你们要问什么，不是我主动要的。",
+      "witness": "，旁边人已经不用解释也知道这事不对。"
+    },
+    "gagged": {
+      "previous": "，自己先露出“又到了这一步”的表情。",
+      "target": "，立刻回调那笔旧账：又来？别把这锅焊我身上。",
+      "witness": "，现场明显把这事和旧梗连在一起。"
+    },
+    "ritualized": {
+      "previous": "，熟得像在交接一件固定节目。",
+      "target": "，顺手摆出老位置：看来{item_name}又要被算到我头上。",
+      "witness": "，大家已经把它当成固定梗看。"
+    }
+  },
+  "stagePatternMap": {
+    "leak_cover": "repeated",
+    "preemptive_gag": "noticed",
+    "gag_callback": "gagged",
+    "ritualized_gag": "ritualized"
+  },
+  "relationShift": {
+    "joiner": "，",
+    "prefix": "，",
+    "maxParts": 2,
+    "fragments": {
+      "warmth": "看{to_name}的眼神比刚才软了一点",
+      "debt": "又像欠了{to_name}一点不好明说的情",
+      "awkward": "和{to_name}之间多了一层不好解释",
+      "suspicion": "对{to_name}的来意多看了一眼",
+      "fun": "把{to_name}也记进这场话柄里"
+    }
+  },
+  "giftAttitude": {
+    "resultText": {
+      "like": "接收者对这件东西有明确好感，倾向收下",
+      "reject": "接收者明显排斥这件东西，倾向拒绝或撇清",
+      "like_then_reject": "这件东西本身有吸引力，但重复感或关系压力已经让接收者想把它推远",
+      "accept_then_discard": "接收者可能先礼貌接住，随后用放回地上来撇清责任",
+      "ambivalent": "接收者态度矛盾，既会评估价值，也会顾虑代价"
+    },
+    "reasonText": {
+      "danger": "危险和安全感",
+      "power": "权力、威慑和控制感",
+      "forbidden": "归属、规矩和越界压力",
+      "awkward": "尴尬和不好解释的处境",
+      "debt": "人情债和被绑定的压力",
+      "joke": "被拿来当话柄或身体梗的风险",
+      "status": "身份、面子和场面价值",
+      "utility": "实用价值"
+    },
+    "reasonTemplate": "主要牵动{reason}",
+    "balance": {
+      "likeGap": 30,
+      "rejectGap": -30,
+      "closeGapAbs": 12,
+      "likeText": "好感明显压过排斥",
+      "rejectText": "排斥明显压过好感",
+      "closeText": "好感和排斥接近，反应会更看人设和现场关系"
+    },
+    "pressure": {
+      "high": 70,
+      "visible": 40,
+      "fatigueHigh": 70,
+      "fatigueVisible": 35,
+      "highText": "现场压力很高",
+      "visibleText": "现场压力已经可见",
+      "fatigueHighText": "重复感已经让接收者明显厌烦",
+      "fatigueVisibleText": "重复感开始改变接收者的态度"
+    }
+  },
+  "relationMemory": {
+    "defaultTone": "注意力",
+    "lineTemplate": "{from_name}对{to_name}的{tone_text}被这次赠送牵动",
+    "tones": {
+      "warmth": "亲近感",
+      "awkward": "尴尬",
+      "suspicion": "怀疑",
+      "debt": "人情压力",
+      "fun": "话柄感"
+    },
+    "standingThreshold": 4,
+    "standingTemplate": "他对{to_name}已经{tone_text}",
+    "standingTones": {
+      "warmth": "更亲近",
+      "awkward": "有尴尬",
+      "suspicion": "起疑",
+      "debt": "有人情压力",
+      "fun": "觉得这事有话柄"
+    }
+  },
+  "autoDropFact": {
+    "ground": "{npc_name}已经把{item_name}放回地上，动作本身是在撇清持有关系",
+    "default": "{npc_name}已经主动处理了{item_name}，动作本身会影响现场关系"
+  },
+  "rememberedEvent": {
+    "chat": "玩家之前对他说过：“{message}”",
+    "reportedTransferWithMessage": "他之前听玩家说过：{message}；随后{item_name}从{from_name}到了{to_name}手里",
+    "reportedTransfer": "他之前听玩家说过一件转交物品的事；随后{item_name}从{from_name}到了{to_name}手里",
+    "npcReply": "{speaker}刚才说过：“{text}”",
+    "itemTransfer": "他记得{item_name}从{previous_name}转到了{target_name}手里",
+    "itemDrop": "他记得{item_name}之前被放到{target_name}身上",
+    "preemptive": "他记得自己已经会提前反应{item_name}被拖起来",
+    "forcedDrop": "他记得刚才有人把手里的东西丢到地上"
+  },
+  "repetitionMemory": {
+    "template": "同类物品互动已有累积记忆，关系压力{pressure_text}；请基于角色人设、当前关系和物品归属自然体现态度变化，不要复述内部规则或阶段名。",
+    "thresholds": [
+      {"stage": "ritualized", "heat": 140, "text": "已经变成现场都会记得的老账"},
+      {"stage": "gagged", "heat": 105, "text": "已经明显牵动面子和责任"},
+      {"stage": "noticed", "heat": 70, "text": "已经不太像偶然"},
+      {"stage": "repeated", "heat": 35, "text": "开始被当事人记住"}
+    ],
+    "defaultText": "刚开始沉淀"
+  }
+}

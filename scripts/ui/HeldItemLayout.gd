@@ -11,4 +11,4 @@ static func anchor_offset() -> Vector2:
 
 
 static func item_offset(index: int) -> Vector2:
-	return Vector2(20.0 + 16.0 * float(index % 3), -18.0 - 12.0 * float(index / 3))
+	return Vector2(34.0 + 44.0 * float(index % 3), -30.0 - 34.0 * float(index / 3))

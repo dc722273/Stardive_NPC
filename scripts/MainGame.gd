@@ -5,6 +5,7 @@ const ConstantsScript := preload("res://scripts/core/Constants.gd")
 const BuildingPlacementServiceScript := preload("res://scripts/world/BuildingPlacementService.gd")
 const GridPathfinderScript := preload("res://scripts/world/GridPathfinder.gd")
 const InteractionEventLogScript := preload("res://scripts/world/InteractionEventLog.gd")
+const InteractionEventScript := preload("res://scripts/state/InteractionEvent.gd")
 const ItemStateScript := preload("res://scripts/state/ItemState.gd")
 const NPCStateScript := preload("res://scripts/state/NPCState.gd")
 const TodoItemScript := preload("res://scripts/state/TodoItem.gd")
@@ -15,12 +16,14 @@ const LLMTransportScript := preload("res://scripts/npc/LLMTransport.gd")
 const LLMClientScript := preload("res://scripts/npc/LLMClient.gd")
 const DailyTodoPlannerScript := preload("res://scripts/npc/DailyTodoPlanner.gd")
 const NPCFeedbackBuilderScript := preload("res://scripts/npc/NPCFeedbackBuilder.gd")
+const NPCPerformanceDirectorScript := preload("res://scripts/npc/NPCPerformanceDirector.gd")
 const NPCMoverScript := preload("res://scripts/npc/NPCMover.gd")
 const TodoExecutorScript := preload("res://scripts/npc/TodoExecutor.gd")
 const NPCActionSchedulerScript := preload("res://scripts/npc/NPCActionScheduler.gd")
 const GameClockScript := preload("res://scripts/world/GameClock.gd")
 const ConfigLoaderScript := preload("res://scripts/config/ConfigLoader.gd")
 const InteractionDeltaRulesScript := preload("res://scripts/world/InteractionDeltaRules.gd")
+const WellbeingRulesScript := preload("res://scripts/world/WellbeingRules.gd")
 const HeldItemLayoutScript := preload("res://scripts/ui/HeldItemLayout.gd")
 
 @export var cell_size: int = 64
@@ -33,14 +36,12 @@ const GRAB_PULL := 0.2
 const HIT_RADIUS := 58.0
 const NPC_CENTER_GRAB_RADIUS := 16.0
 # 滚轮 zoom：以光标为锚，每档乘 ZOOM_STEP / 除 ZOOM_STEP，clamp 到 [ZOOM_MIN, ZOOM_MAX]。
-const DEFAULT_BG_PATH := "res://assets/bg/鹅城地图.png"
 const ZOOM_MIN := 0.8
 const ZOOM_MAX := 2.35
 const ZOOM_STEP := 1.12
 const MOUSE_DRAG_THRESHOLD := 8.0
 const FEEDBACK_PAUSE_SECONDS := 8.0
-# 控制 UI 折叠提示：角落一行 "[H] 控制说明"，按 H 展开/收起完整按键表。
-const CONTROLS_FULL := "[H] 收起\nWASD 移动镜头\n空白处左键拖动画布\nF 建造模式\n滚轮 缩放\n左键 选中/拖拽\n右键 丢弃手持物\nCtrl+S 保存 / Ctrl+L 读取"
+const NPC_RECENT_MEMORY_LIMIT := 20
 var grab_mouse_world: Vector2 = Vector2.ZERO
 var camera_dragging: bool = false
 var camera_drag_started: bool = false
@@ -57,6 +58,7 @@ var llm_transport
 var llm_client
 var daily_todo_planner
 var npc_feedback_builder
+var npc_performance_director
 
 # NPC 执行层：每个 NPC 一个 mover（持路径状态），共享 executor + scheduler。
 var npc_movers: Dictionary = {}   # npc_id(StringName) -> NPCMover
@@ -83,8 +85,10 @@ var controls_hint: Label
 var _controls_expanded: bool = false
 var schedule_sidebar
 var clock_label: Label
+var npc_chat_panel
 var game_clock
 var gameplay_config: Dictionary = {}
+var wellbeing_config: Dictionary = {}
 var npc_config_by_id: Dictionary = {}
 
 var selected_entity_id: StringName = &""
@@ -99,13 +103,14 @@ var tick: int = 0
 
 
 func _ready() -> void:
+	_load_runtime_configs()
 	_resolve_scene_nodes()
-	_fit_world_background(DEFAULT_BG_PATH)
+	_fit_world_background(_world_background_path())
 	_wire_core_world_services()
 	_wire_npc_llm_services()
 	_seed_sample_npc_item_data()
 	_wire_ui_nodes()
-	_update_feedback_text("Ready")
+	_update_feedback_text(_ui_message("ready"))
 	print("[NPC] _ready done | npcs=%d | executor=%s | scheduler=%s | exec_interval=%.2fs" % [
 		entity_registry.npcs.size() if entity_registry != null else -1,
 		"ok" if todo_executor != null else "NULL",
@@ -132,6 +137,7 @@ func _process(delta: float) -> void:
 	if game_clock != null:
 		game_clock.advance(delta)
 		if game_clock.consume_morning_event():
+			assign_daily_wellbeing_problem()
 			request_daily_todos_for_all_npcs()
 		if clock_label != null:
 			clock_label.text = game_clock.time_label()
@@ -171,7 +177,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func toggle_controls_hint() -> void:
 	_controls_expanded = not _controls_expanded
 	if controls_hint != null:
-		controls_hint.text = CONTROLS_FULL if _controls_expanded else "[H] 控制说明"
+		controls_hint.text = _controls_text(_controls_expanded)
 
 
 func _draw() -> void:
@@ -301,7 +307,9 @@ func select_cell_target(cell: Vector2i) -> void:
 			schedule_sidebar.show_for_npc(entity_registry.npcs[hit_id])
 		elif schedule_sidebar != null:
 			schedule_sidebar.clear()
-		_update_feedback_text("Selected %s" % str(hit_id))
+		if npc_chat_panel != null and entity_registry.npcs.has(hit_id) and npc_chat_panel.has_method("select_target"):
+			npc_chat_panel.select_target(hit_id)
+		_update_feedback_text(_ui_message("selectedEntity", {"entity_id": str(hit_id)}))
 		return
 	selected_entity_id = &""
 	grabbed_entity_id = &""
@@ -309,7 +317,7 @@ func select_cell_target(cell: Vector2i) -> void:
 	if schedule_sidebar != null:
 		schedule_sidebar.clear()
 	_begin_camera_drag()
-	_update_feedback_text("Selected cell %s" % str(cell))
+	_update_feedback_text(_ui_message("selectedCell", {"cell": str(cell)}))
 
 
 func _hit_test_entity(world_pos: Vector2) -> StringName:
@@ -386,13 +394,14 @@ func start_drag_grab(cell: Vector2i) -> void:
 	dragged_item_previous_anchor_npc_id = &""
 	if entity_registry != null and entity_registry.items.has(grabbed_entity_id):
 		dragged_item_previous_anchor_npc_id = entity_registry.items[grabbed_entity_id].anchor_npc_id()
+		_emit_preemptive_item_gag(grabbed_entity_id)
 
 
 func update_drag_preview(selection_rect: Rect2i, end_cell: Vector2i) -> void:
 	latest_drag_rect = selection_rect
 	latest_drag_end_cell = end_cell
 	if fenced_area_mode:
-		_update_feedback_text("FencedArea footprint %s" % str(selection_rect))
+		_update_feedback_text(_ui_message("fencedAreaFootprint", {"rect": str(selection_rect)}))
 
 
 ## 拖拽重力感：左键按住时把被抓实体（npc 或 item）每帧朝鼠标世界坐标插值拉近。
@@ -441,7 +450,7 @@ func drop_or_release_selection(selection_rect: Rect2i, end_cell: Vector2i) -> vo
 			return
 	if entity_registry.set_entity_position(grabbed_entity_id, drop_world):
 		event_log.record(&"player_move_entity", grabbed_entity_id, &"", &"cell", ConstantsScript.world_to_cell(drop_world), {}, &"player", tick)
-		_update_feedback_text("Dropped %s" % str(grabbed_entity_id))
+		_update_feedback_text(_ui_message("droppedEntity", {"entity_id": str(grabbed_entity_id)}))
 	grabbed_entity_id = &""
 	dragged_item_previous_anchor_npc_id = &""
 	_end_camera_drag()
@@ -449,15 +458,17 @@ func drop_or_release_selection(selection_rect: Rect2i, end_cell: Vector2i) -> vo
 
 func discard_held_item_with_right_click() -> void:
 	if selected_entity_id == &"" or not entity_registry.npcs.has(selected_entity_id):
-		_update_feedback_text("Right-click an NPC with a held item to discard")
+		_update_feedback_text(_ui_message("rightClickDiscardHint"))
 		return
+	var before_count: int = event_log.events.size() if event_log != null and event_log.get("events") is Array else 0
 	if entity_registry.drop_anchored_items(selected_entity_id, event_log):
-		var event = event_log.recent_events(1)[0] if not event_log.recent_events(1).is_empty() else null
-		_update_feedback_text("Discarded held item")
-		if event != null:
+		_update_feedback_text(_ui_message("discardedHeldItem"))
+		var new_events: Array = event_log.events.slice(before_count, event_log.events.size()) if event_log != null and event_log.get("events") is Array else []
+		for event in new_events:
+			_apply_wellbeing_to_event(event)
 			_emit_npc_feedback(event, selected_entity_id)
 	else:
-		_update_feedback_text("No held item to discard")
+		_update_feedback_text(_ui_message("noHeldItemToDiscard"))
 
 
 func _handle_item_release(item_id: StringName, drop_world: Vector2) -> bool:
@@ -465,7 +476,7 @@ func _handle_item_release(item_id: StringName, drop_world: Vector2) -> bool:
 	if target_npc == &"":
 		if entity_registry.set_entity_position(item_id, drop_world):
 			event_log.record(&"player_move_entity", item_id, &"", &"cell", ConstantsScript.world_to_cell(drop_world), {}, &"player", tick)
-			_update_feedback_text("Dropped %s" % str(item_id))
+			_update_feedback_text(_ui_message("droppedEntity", {"entity_id": str(item_id)}))
 			return true
 		return false
 	var previous_holder := dragged_item_previous_anchor_npc_id
@@ -476,15 +487,19 @@ func _handle_item_release(item_id: StringName, drop_world: Vector2) -> bool:
 	if not entity_registry.give_item_to_npc(item_id, target_npc):
 		return false
 	var event_type := &"player_transfer_item_between_npcs" if previous_holder != &"" and previous_holder != target_npc else &"player_drop_item_on_npc"
-	var payload := _item_event_payload(item_id, target_npc, previous_holder)
+	var payload := _item_event_payload(item_id, target_npc, previous_holder, _gift_context_for_item_event(item_id, target_npc, previous_holder, "player_drag"))
 	var auto_drop := _maybe_auto_drop_rejected_item(item_id, target_npc, payload)
 	if not auto_drop.is_empty():
 		payload["npc_auto_drop"] = auto_drop
 		payload["currentAnchor"] = auto_drop.get("finalAnchor", {"type": "ground"})
 		payload["finalAnchor"] = auto_drop.get("finalAnchor", {"type": "ground"})
-		payload["event_text"] = "%s接到%s后主动丢到地上" % [str(payload.get("item_target_name", target_npc)), str(payload.get("item_name", item_id))]
+		payload["event_text"] = _event_text_template("autoDrop", {
+			"target_name": str(payload.get("item_target_name", target_npc)),
+			"item_name": str(payload.get("item_name", item_id)),
+		})
 	var event = event_log.record(event_type, item_id, target_npc, &"npc", ConstantsScript.world_to_cell(drop_world), payload, &"player", tick)
-	_update_feedback_text(str(payload.get("event_text", "NPC accepted item")))
+	_apply_wellbeing_to_event(event)
+	_update_feedback_text(str(event.payload.get("event_text", payload.get("event_text", _ui_message("npcAcceptedItemFallback")))))
 	_emit_interaction_feedback(event, _payload_npc_ids(payload))
 	return true
 
@@ -504,28 +519,33 @@ func _handle_npc_release(npc_id: StringName, drop_world: Vector2) -> bool:
 			_move_holder_into_transfer_range(previous_holder, npc_id)
 		if not entity_registry.give_item_to_npc(target_item, npc_id):
 			return false
-		var payload := _item_event_payload(target_item, npc_id, previous_holder)
+		var payload := _item_event_payload(target_item, npc_id, previous_holder, _gift_context_for_item_event(target_item, npc_id, previous_holder, "player_drag_npc"))
 		var auto_drop := _maybe_auto_drop_rejected_item(target_item, npc_id, payload)
 		if not auto_drop.is_empty():
 			payload["npc_auto_drop"] = auto_drop
 			payload["currentAnchor"] = auto_drop.get("finalAnchor", {"type": "ground"})
 			payload["finalAnchor"] = auto_drop.get("finalAnchor", {"type": "ground"})
-			payload["event_text"] = "%s接到%s后主动丢到地上" % [str(payload.get("item_target_name", npc_id)), str(payload.get("item_name", target_item))]
+			payload["event_text"] = _event_text_template("autoDrop", {
+				"target_name": str(payload.get("item_target_name", npc_id)),
+				"item_name": str(payload.get("item_name", target_item)),
+			})
 		var event_type := &"player_transfer_item_between_npcs" if previous_holder != &"" and previous_holder != npc_id else &"player_drop_npc_near_item"
 		var event = event_log.record(event_type, target_item, npc_id, &"npc", ConstantsScript.world_to_cell(drop_world), payload, &"player", tick)
-		_update_feedback_text(str(payload.get("event_text", "NPC touched item")))
+		_apply_wellbeing_to_event(event)
+		_update_feedback_text(str(event.payload.get("event_text", payload.get("event_text", _ui_message("npcTouchedItemFallback")))))
 		_emit_interaction_feedback(event, _payload_npc_ids(payload))
 		return true
 	if target_npc != &"" and target_npc != npc_id:
 		_place_npc_near_target(npc_id, target_npc)
 		var payload := _npc_encounter_payload(npc_id, target_npc)
 		var event = event_log.record(&"player_drop_npc_near_npc", npc_id, target_npc, &"npc", ConstantsScript.world_to_cell(drop_world), payload, &"player", tick)
+		_apply_wellbeing_to_event(event)
 		_emit_interaction_feedback(event, _payload_npc_ids(payload))
 		return true
 	return false
 
 
-func _item_event_payload(item_id: StringName, target_npc_id: StringName, previous_holder_id: StringName = &"") -> Dictionary:
+func _item_event_payload(item_id: StringName, target_npc_id: StringName, previous_holder_id: StringName = &"", gift_context: Dictionary = {}) -> Dictionary:
 	var item = entity_registry.items.get(item_id)
 	var target_npc = entity_registry.npcs.get(target_npc_id)
 	var previous_holder = entity_registry.npcs.get(previous_holder_id)
@@ -542,14 +562,17 @@ func _item_event_payload(item_id: StringName, target_npc_id: StringName, previou
 	var owner_name: String = owner_npc.name if owner_npc != null else ""
 	var previous_name: String = previous_holder.name if previous_holder != null else ""
 	var is_transfer := previous_holder_id != &"" and previous_holder_id != target_npc_id
-	var event_text := "%s与%s发生直接互动" % [target_name, item_name]
+	var template_values := _item_template_values(item_id, target_npc_id, previous_holder_id)
+	var event_text := _event_text_template("itemDirect", template_values)
 	if is_transfer:
-		event_text = "%s从%s转移到%s身上" % [item_name, previous_name, target_name]
+		event_text = _event_text_template("itemTransfer", template_values)
 	elif item != null and item.owner_id != &"" and item.owner_id != target_npc_id:
-		event_text = "%s手里突然多了%s，原本属于%s" % [target_name, item_name, owner_name]
+		event_text = _event_text_template("itemMisplaced", template_values)
 	var participant_actions := _item_participant_actions(item_id, target_npc_id, previous_holder_id, npc_ids)
 	var scene_seed := _item_scene_seed(item_id, target_npc_id, previous_holder_id, nearby_ids)
-	var interaction_delta := InteractionDeltaRulesScript.apply_attach_object_to_npc(item, target_npc_id, previous_holder_id, npc_ids, entity_registry, gameplay_config, tick)
+	if gift_context.is_empty():
+		gift_context = _gift_context_for_item_event(item_id, target_npc_id, previous_holder_id, "player_drag")
+	var interaction_delta := InteractionDeltaRulesScript.apply_attach_object_to_npc(item, target_npc_id, previous_holder_id, npc_ids, entity_registry, gameplay_config, tick, gift_context)
 	return {
 		"source": "item_drag",
 		"npc_ids": npc_ids,
@@ -562,7 +585,9 @@ func _item_event_payload(item_id: StringName, target_npc_id: StringName, previou
 		"scene_seed": scene_seed,
 		"interaction_delta": interaction_delta,
 		"interaction_trace": interaction_delta.get("interactionTrace", {}),
-		"object_stance": interaction_delta.get("objectStance", {}),
+		"gift_trace": interaction_delta.get("giftTrace", {}),
+		"gift_context": interaction_delta.get("giftContext", gift_context),
+		"gift_stance": interaction_delta.get("giftStance", {}),
 		"performance_plan": interaction_delta.get("performancePlan", {}),
 		"relation_memory_updates": interaction_delta.get("relationMemoryUpdates", []),
 		"relationship_hint": _item_relationship_hint(item_id, target_npc_id, previous_holder_id, nearby_ids),
@@ -581,6 +606,7 @@ func _item_event_payload(item_id: StringName, target_npc_id: StringName, previou
 		"item_transfer_interaction": is_transfer,
 		"item_witness_interaction": not is_transfer and not nearby_ids.is_empty(),
 		"object_access_rule": item.access_rule.duplicate(true) if item != null else {},
+		"object_classification": item.classification.duplicate(true) if item != null else {},
 		"object_social": item.social.duplicate(true) if item != null else {},
 		"object_social_state": _item_social_state(item_id, target_npc_id, is_transfer),
 		"object_memory": item.memory.duplicate(true) if item != null else {"topLinks": []},
@@ -590,14 +616,15 @@ func _item_event_payload(item_id: StringName, target_npc_id: StringName, previou
 func _maybe_auto_drop_rejected_item(item_id: StringName, target_npc_id: StringName, payload: Dictionary) -> Dictionary:
 	if not entity_registry.items.has(item_id) or not entity_registry.npcs.has(target_npc_id):
 		return {}
-	var stance: Dictionary = payload.get("object_stance", {})
-	if str(stance.get("result", "")) != "reject":
-		return {}
+	var stance: Dictionary = payload.get("gift_stance", {})
+	var stance_result := str(stance.get("result", ""))
 	var trace: Dictionary = payload.get("interaction_trace", {})
 	var count := int(trace.get("countInWindow", 1))
 	var stage := str(trace.get("stage", "new"))
 	var item = entity_registry.items[item_id]
 	var npc = entity_registry.npcs[target_npc_id]
+	if not _npc_auto_drop_candidate(item, npc, stance):
+		return {}
 	var threshold_info := _npc_auto_drop_threshold(item, npc, stance)
 	var threshold := int(threshold_info.get("threshold", 3))
 	if count < threshold:
@@ -623,62 +650,126 @@ func _maybe_auto_drop_rejected_item(item_id: StringName, target_npc_id: StringNa
 	}
 
 
+func _npc_auto_drop_candidate(item, npc, stance: Dictionary) -> bool:
+	var threshold_config: Dictionary = gameplay_config.get("autoDropThreshold", {})
+	if threshold_config.is_empty():
+		threshold_config = ConfigLoaderScript.load_gameplay_config().get("autoDropThreshold", {})
+	var candidate_cfg: Dictionary = threshold_config.get("candidate", {})
+	var result := str(stance.get("result", ""))
+	var direct_results: Array = _array_from(candidate_cfg.get("results", []))
+	if direct_results.has(result):
+		return true
+	if result == "reject":
+		return _auto_drop_conditions_match(candidate_cfg.get("rejectAny", []), item, npc, stance, false)
+	return false
+
+
+func _gift_context_for_item_event(item_id: StringName, target_npc_id: StringName, previous_holder_id: StringName = &"", operator: String = "player_drag") -> Dictionary:
+	var from_anchor := {"type": "ground"}
+	if previous_holder_id != &"":
+		from_anchor = {"type": "npc", "npcId": str(previous_holder_id)}
+	elif entity_registry != null and entity_registry.items.has(item_id):
+		var item = entity_registry.items[item_id]
+		if item.current_anchor is Dictionary:
+			from_anchor = item.current_anchor.duplicate(true)
+	var attribution_target := "unknown"
+	var confidence := 0.0
+	if previous_holder_id != &"" and previous_holder_id != target_npc_id:
+		attribution_target = "npc"
+		confidence = 1.0
+	elif operator.begins_with("player"):
+		attribution_target = "player"
+		confidence = 1.0
+	return {
+		"operator": operator,
+		"giverNpcId": previous_holder_id if attribution_target == "npc" else &"",
+		"receiverNpcId": target_npc_id,
+		"fromAnchor": from_anchor,
+		"toAnchor": {"type": "npc", "npcId": str(target_npc_id)},
+		"attributionTarget": attribution_target,
+		"attributionConfidence": confidence,
+	}
+
+
 func _npc_auto_drop_threshold(item, npc, stance: Dictionary) -> Dictionary:
-	var threshold := 3
+	var threshold_config: Dictionary = gameplay_config.get("autoDropThreshold", {})
+	if threshold_config.is_empty():
+		threshold_config = ConfigLoaderScript.load_gameplay_config().get("autoDropThreshold", {})
+	var threshold := int(threshold_config.get("base", 3))
 	var factors: Array = []
-	var social: Dictionary = item.social if item != null else {}
-	var traits: Dictionary = npc.traits if npc != null else {}
-	var tags: Array = npc.tags if npc != null and npc.tags is Array else []
-	var reason := str(stance.get("dominantReason", ""))
-	var reject := int(stance.get("reject", 0))
-	var want := int(stance.get("want", 0))
-	var reject_margin := reject - want
-	var danger := int(social.get("danger", 0))
-	var awkward := int(social.get("awkward", 0))
-	var status := int(social.get("status", 0))
-	var utility := int(social.get("utility", 0))
-	var joke := int(social.get("joke", 0))
-	var caution := int(traits.get("caution", 50))
-	var face := int(traits.get("face", 50))
-	var control := int(traits.get("control", 50))
-	var play := int(traits.get("play", 50))
-
-	if reason == "danger" or danger >= 80:
-		threshold -= 1
-		factors.append("danger")
-	if reason == "forbidden":
-		threshold -= 1
-		factors.append("forbidden")
-	if reject_margin >= 35:
-		threshold -= 1
-		factors.append("strong_reject")
-	if caution >= 75:
-		threshold -= 1
-		factors.append("high_caution")
-	if tags.has("avoid_responsibility"):
-		threshold -= 1
-		factors.append("avoid_responsibility")
-	if awkward >= 85 and caution >= 60:
-		threshold -= 1
-		factors.append("awkward_pressure")
-
-	if face >= 75:
-		threshold += 1
-		factors.append("high_face")
-	if control >= 75:
-		threshold += 1
-		factors.append("high_control")
-	if status >= 70 or utility >= 70:
-		threshold += 1
-		factors.append("valuable_object")
-	if joke >= 80 and play >= 70:
-		threshold += 1
-		factors.append("plays_with_gag")
+	var pressure_delta := 0
+	var strongest_delay_delta := 0
+	for raw_factor in threshold_config.get("factors", []):
+		if not (raw_factor is Dictionary):
+			continue
+		var factor: Dictionary = raw_factor
+		if _auto_drop_factor_matches(factor, item, npc, stance):
+			var delta := int(factor.get("delta", 0))
+			if delta < 0:
+				pressure_delta += delta
+			elif delta > strongest_delay_delta:
+				strongest_delay_delta = delta
+			factors.append(str(factor.get("name", "")))
+	threshold += pressure_delta + strongest_delay_delta
 
 	return {
-		"threshold": clampi(threshold, 2, 5),
+		"threshold": clampi(threshold, int(threshold_config.get("min", 2)), int(threshold_config.get("max", 5))),
 		"factors": factors,
 	}
+
+
+func _auto_drop_factor_matches(factor: Dictionary, item, npc, stance: Dictionary) -> bool:
+	if factor.has("all"):
+		return _auto_drop_conditions_match(factor.get("all", []), item, npc, stance, true)
+	if factor.has("any"):
+		return _auto_drop_conditions_match(factor.get("any", []), item, npc, stance, false)
+	return false
+
+
+func _auto_drop_conditions_match(conditions: Variant, item, npc, stance: Dictionary, require_all: bool) -> bool:
+	if not (conditions is Array):
+		return true
+	var matched_any := false
+	for raw_condition in conditions:
+		if not (raw_condition is Dictionary):
+			continue
+		var matched := _auto_drop_condition_matches(raw_condition, item, npc, stance)
+		if require_all and not matched:
+			return false
+		if matched:
+			matched_any = true
+	return true if require_all else matched_any
+
+
+func _auto_drop_condition_matches(condition: Dictionary, item, npc, stance: Dictionary) -> bool:
+	var value: Variant = _auto_drop_condition_value(condition, item, npc, stance)
+	if condition.has("eq") and str(value) != str(condition.get("eq", "")):
+		return false
+	if condition.has("gte") and not (float(value) >= float(condition.get("gte", 0))):
+		return false
+	if condition.has("lte") and not (float(value) <= float(condition.get("lte", 0))):
+		return false
+	if condition.has("has"):
+		return value is Array and value.has(condition.get("has"))
+	return true
+
+
+func _auto_drop_condition_value(condition: Dictionary, item, npc, stance: Dictionary) -> Variant:
+	var source := str(condition.get("source", "stance"))
+	var field := str(condition.get("field", ""))
+	if source == "social":
+		var social: Dictionary = item.social if item != null and item.social is Dictionary else {}
+		return social.get(field, 0)
+	if source == "traits":
+		var traits: Dictionary = npc.traits if npc != null and npc.traits is Dictionary else {}
+		return traits.get(field, 0)
+	if source == "tags":
+		return npc.tags if npc != null and npc.tags is Array else []
+	if field == "reject_margin":
+		return int(stance.get("reject", 0)) - int(stance.get("want", 0))
+	if field == "reason":
+		return str(stance.get("dominantReason", ""))
+	return stance.get(field, null)
 
 
 func _npc_auto_drop_position(npc_id: StringName, item_id: StringName) -> Vector2:
@@ -715,10 +806,10 @@ func _npc_encounter_payload(primary_npc_id: StringName, target_npc_id: StringNam
 		"target_npc_id": target_npc_id,
 		"target_npc_name": target_name,
 		"participant_actions": _meeting_participant_actions(npc_ids),
-		"recent_actions": ["%s被观察者拖到%s身边，现场被迫开聊" % [primary_name, target_name]],
-		"event_text": "%s被拖到%s身边，实时对话开始" % [primary_name, target_name],
+		"recent_actions": [_event_text_template("npcEncounterRecent", {"primary_name": primary_name, "target_name": target_name})],
+		"event_text": _event_text_template("npcEncounter", {"primary_name": primary_name, "target_name": target_name}),
 		"scene_seed": _npc_scene_seed(primary_npc_id, target_npc_id),
-		"relationship_hint": "观察者强制拉近距离，NPC需要立刻回应眼前关系和刚才的行为。",
+		"relationship_hint": _interaction_template("relationshipHints", "npcEncounter"),
 	}
 
 
@@ -735,6 +826,7 @@ func _npc_item_observation_payload(npc_id: StringName, item_id: StringName) -> D
 		"ownerId": item.owner_id if item != null else &"",
 		"item_owner_name": owner.name if owner != null else "",
 		"object_access_rule": item.access_rule.duplicate(true) if item != null else {},
+		"object_classification": item.classification.duplicate(true) if item != null else {},
 		"object_social": item.social.duplicate(true) if item != null else {},
 	}
 
@@ -812,6 +904,124 @@ func _payload_npc_ids(payload: Dictionary) -> Array:
 	return result
 
 
+func _emit_preemptive_item_gag(item_id: StringName) -> Dictionary:
+	if entity_registry == null or event_log == null or not entity_registry.items.has(item_id):
+		return {}
+	var item = entity_registry.items[item_id]
+	var best := {}
+	for npc_id in entity_registry.npcs.keys():
+		var gag := InteractionDeltaRulesScript.preemptive_gag_for_item_target(item, StringName(npc_id), gameplay_config)
+		if gag.is_empty():
+			continue
+		if best.is_empty() or _gag_stage_rank(str(gag.get("stage", "new"))) > _gag_stage_rank(str(best.get("stage", "new"))):
+			best = gag
+	if best.is_empty():
+		return {}
+	var target_id := StringName(best.get("npcId", ""))
+	if target_id == &"" or not entity_registry.npcs.has(target_id):
+		return {}
+	best = _promote_preemptive_item_gag_memory(item, target_id, best)
+	var npc = entity_registry.npcs[target_id]
+	var item_name: String = item.name if item != null else str(item_id)
+	var line := str(best.get("preemptiveLine", ""))
+	var gag_cfg := _interaction_config("preemptiveItemGag")
+	var values := {
+		"npc_name": npc.name,
+		"item_name": item_name,
+		"line": line,
+	}
+	if line.is_empty():
+		line = _template_field(gag_cfg, "fallbackLine", values)
+		values["line"] = line
+	var retreat := _maybe_retreat_from_preemptive_gag(target_id, item_id, best)
+	var scene_cfg: Dictionary = gag_cfg.get("sceneSeed", {})
+	var payload := {
+		"source": "preemptive_item_gag",
+		"npc_ids": [target_id],
+		"primary_npc_ids": [target_id],
+		"item_id": item_id,
+		"item_name": item_name,
+		"gagTag": str(best.get("gagTag", "")),
+		"gagAction": str(best.get("gagAction", "")),
+		"stage": str(best.get("stage", "")),
+		"body_reaction": retreat,
+		"event_text": _template_field(gag_cfg, "eventText", values),
+		"recent_actions": [_template_field(gag_cfg, "recentAction", values)],
+		"scene_seed": {
+			"type": _template_field(scene_cfg, "type", values),
+			"title": _template_field(scene_cfg, "title", values),
+			"visible_topic": _template_field(scene_cfg, "visibleTopic", values),
+			"trigger_action": _template_field(scene_cfg, "triggerAction", values),
+			"actor": target_id,
+			"observer": &"player",
+		"required_shift": _array_from(scene_cfg.get("requiredShift", [])),
+		"allowed_outcomes": _array_from(scene_cfg.get("allowedOutcomes", [])),
+			"interaction_goal": _template_field(scene_cfg, "goal", values),
+			"consequence_rule": _template_field(scene_cfg, "consequence", values),
+		},
+	}
+	var event = event_log.record(&"player_drag_started_trained_item", item_id, target_id, &"npc", npc.current_cell, payload, &"player", tick)
+	_update_feedback_text(str(payload.get("event_text", "")))
+	_emit_interaction_feedback(event, [target_id])
+	return payload
+
+
+func _maybe_retreat_from_preemptive_gag(npc_id: StringName, item_id: StringName, gag: Dictionary) -> Dictionary:
+	if entity_registry == null or not entity_registry.npcs.has(npc_id) or not entity_registry.items.has(item_id):
+		return {}
+	var action := str(gag.get("gagAction", ""))
+	var stage := str(gag.get("stage", "new"))
+	if not _gag_action_implies_retreat(action):
+		return {}
+	var npc = entity_registry.npcs[npc_id]
+	var item_pos := _item_world_position(item_id)
+	var direction: Vector2 = (npc.position - item_pos).normalized()
+	if direction == Vector2.ZERO:
+		direction = Vector2.RIGHT
+	var distance: float = float(ConstantsScript.CELL_SIZE) * (1.25 if _gag_stage_rank(stage) >= _gag_stage_rank("noticed") else 0.75)
+	var before: Vector2 = npc.position
+	var target_pos: Vector2 = before + direction * distance
+	if not entity_registry.set_npc_position(npc_id, target_pos):
+		return {}
+	return {
+		"type": "retreat",
+		"action": action,
+		"from": {"x": before.x, "y": before.y},
+		"to": {"x": npc.position.x, "y": npc.position.y},
+	}
+
+
+func _gag_action_implies_retreat(action: String) -> bool:
+	return ["step_back", "hold_up_hands", "push_object_back", "snap_notebook_close"].has(action)
+
+
+func _promote_preemptive_item_gag_memory(item, target_id: StringName, gag: Dictionary) -> Dictionary:
+	if item == null or not (item.memory is Dictionary):
+		return gag
+	var memory: Dictionary = item.memory
+	var links: Array = memory.get("topLinks", [])
+	for link in links:
+		if not (link is Dictionary):
+			continue
+		if StringName(link.get("npcId", "")) != target_id:
+			continue
+		if _gag_stage_rank(str(link.get("stage", "new"))) < _gag_stage_rank("noticed"):
+			link["stage"] = "noticed"
+			link["lastStageChangedAt"] = tick
+		link["lastUsedAt"] = tick
+		memory["topLinks"] = links
+		item.memory = memory
+		var promoted := gag.duplicate(true)
+		promoted["stage"] = str(link.get("stage", gag.get("stage", "")))
+		return promoted
+	return gag
+
+
+func _gag_stage_rank(stage: String) -> int:
+	var order := ["new", "repeated", "noticed", "gagged", "ritualized"]
+	return max(0, order.find(stage))
+
+
 func _interaction_center_for_ids(npc_ids: Array, fallback: Vector2 = Vector2.ZERO) -> Vector2:
 	var total := Vector2.ZERO
 	var count := 0
@@ -884,46 +1094,66 @@ func _item_participant_actions(item_id: StringName, target_id: StringName, previ
 	var item_name: String = item.name if item != null else str(item_id)
 	var target_name: String = target.name if target != null else str(target_id)
 	var owner_name := _npc_name(owner_id)
+	var action_cfg := _interaction_config("itemParticipantActions")
+	var values := _item_template_values(item_id, target_id, previous_holder_id)
 	var actions: Array = []
-	var target_label := "正在处理自己的%s" % item_name
-	var target_motive := "确认这个道具还属于自己，并把态度表现出来"
+	var target_label := _template_field(action_cfg, "targetOwnedLabel", values)
+	var target_motive := _template_field(action_cfg, "targetOwnedMotive", values)
 	if previous_holder_id != &"" and previous_holder_id != target_id:
-		target_label = "从%s手里接过%s" % [_npc_name(previous_holder_id), item_name]
-		target_motive = "先回应这个可见交接，判断它是示好、栽赃、试探，还是被迫保管"
+		target_label = _template_field(action_cfg, "targetTransferLabel", values)
+		target_motive = _template_field(action_cfg, "targetTransferMotive", values)
 	elif owner_id != &"" and owner_id != target_id:
-		target_label = "手里突然多了%s（原本属于%s）" % [item_name, owner_name]
-		target_motive = "先解释这件不属于自己的东西为什么在自己手里，避免被扣成偷拿或栽赃"
+		target_label = _template_field(action_cfg, "targetMisplacedLabel", values)
+		target_motive = _template_field(action_cfg, "targetMisplacedMotive", values)
 	actions.append({
 		"npc_id": target_id,
 		"name": target_name,
 		"intention_label": target_label,
 		"intention_motive": target_motive,
-		"desired_outcome": "先用动作处理这个社交事故，再用短句解释、遮掩或反击。",
+		"desired_outcome": _template_field(action_cfg, "targetDesiredOutcome", values),
 	})
 	if previous_holder_id != &"" and previous_holder_id != target_id:
 		actions.append({
 			"npc_id": previous_holder_id,
 			"name": _npc_name(previous_holder_id),
-			"intention_label": "把%s交到%s身上" % [item_name, target_name],
-			"intention_motive": "这个转交动作会暴露占有、偏爱、试探或被迫让步",
-			"desired_outcome": "必须回应为什么愿意/被迫交出这个道具。",
+			"intention_label": _template_field(action_cfg, "previousLabel", values),
+			"intention_motive": _template_field(action_cfg, "previousMotive", values),
+			"desired_outcome": _template_field(action_cfg, "previousDesiredOutcome", values),
 		})
 	for raw_id in npc_ids:
 		var npc_id := StringName(raw_id)
 		if npc_id == target_id or npc_id == previous_holder_id:
 			continue
+		var witness_values := values.duplicate(true)
+		witness_values["radius_meters"] = "%.1f" % _item_involvement_radius_meters()
 		actions.append({
 			"npc_id": npc_id,
 			"name": _npc_name(npc_id),
-			"intention_label": "在%.1fm内看见%s到了%s手里" % [_item_involvement_radius_meters(), item_name, target_name],
-			"intention_motive": "把目击到的道具归属变化解读成把柄、笑料、怀疑或台阶",
-			"desired_outcome": "只围绕眼前道具归属变化起哄、追问、护短或记账。",
+			"intention_label": _template_field(action_cfg, "witnessLabel", witness_values),
+			"intention_motive": _template_field(action_cfg, "witnessMotive", witness_values),
+			"desired_outcome": _template_field(action_cfg, "witnessDesiredOutcome", witness_values),
 		})
 	return actions
 
 
+func _item_template_values(item_id: StringName, target_id: StringName, previous_holder_id: StringName = &"") -> Dictionary:
+	var item = entity_registry.items.get(item_id) if entity_registry != null else null
+	var owner_id: StringName = item.owner_id if item != null else &""
+	return {
+		"item_id": str(item_id),
+		"item_name": item.name if item != null else str(item_id),
+		"target_id": str(target_id),
+		"target_name": _npc_name(target_id),
+		"previous_id": str(previous_holder_id),
+		"previous_name": _npc_name(previous_holder_id),
+		"owner_id": str(owner_id),
+		"owner_name": _npc_name(owner_id),
+	}
+
+
 func _meeting_participant_actions(npc_ids: Array) -> Array:
 	var actions: Array = []
+	var action_cfg := _interaction_config("meetingParticipantActions")
 	for raw_id in npc_ids:
 		var npc_id := StringName(raw_id)
 		var npc = entity_registry.npcs.get(npc_id)
@@ -934,9 +1164,9 @@ func _meeting_participant_actions(npc_ids: Array) -> Array:
 			"name": npc.name,
 			"performanceState": npc.performance_state,
 			"emotionalState": npc.emotional_state,
-			"intention_label": "观察眼前社交压力",
-			"intention_motive": "按 traits、style 和当前身体状态回应被拖到一起的现场",
-			"desired_outcome": "让关系、尴尬、怀疑、乐子或亏欠至少有一个发生变化。",
+			"intention_label": _template_field(action_cfg, "label"),
+			"intention_motive": _template_field(action_cfg, "motive"),
+			"desired_outcome": _template_field(action_cfg, "desiredOutcome"),
 		})
 	return actions
 
@@ -945,72 +1175,74 @@ func _item_scene_seed(item_id: StringName, target_id: StringName, previous_holde
 	var item = entity_registry.items.get(item_id)
 	var item_name: String = item.name if item != null else str(item_id)
 	var owner_id: StringName = item.owner_id if item != null else &""
-	var owner_name := _npc_name(owner_id)
-	var target_name := _npc_name(target_id)
 	var is_transfer := previous_holder_id != &"" and previous_holder_id != target_id
-	var visible_topic := "%s正在和%s互动：确认、护住、收回或重新摆放，不牵涉其他 NPC" % [target_name, item_name]
-	var type := "solo_item_interaction"
-	var title := "%s处理%s" % [target_name, item_name]
-	var goal := "生成一句短而有角色味的单人道具反应；先回应%s现在在%s手里，再体现他的动作、情绪或占有态度。" % [item_name, target_name]
-	var consequence := "1句内结束：留下一个清楚的动作、情绪或占有态度。"
+	var seed_cfg := _interaction_config("itemSceneSeed")
+	var values := _item_template_values(item_id, target_id, previous_holder_id)
+	var mode_cfg: Dictionary = seed_cfg.get("solo", {})
+	var visible_topic := _template_field(mode_cfg, "visibleTopic", values)
 	if is_transfer:
-		type = "item_transfer"
-		title = "%s交给%s" % [_npc_name(previous_holder_id), target_name]
-		visible_topic = "%s刚从%s身上转到%s身上；这不是凭空出现，而是一次可见的交接" % [item_name, _npc_name(previous_holder_id), target_name]
-		goal = "先回应交接动作本身，再演出%s归属变化造成的占有、嫌疑、偏爱或亏欠。" % item_name
-		consequence = "4句内留下明确道具后果：谁暂时持有、谁被怀疑或被维护、关系/信任/怨气哪一项变化。"
+		mode_cfg = seed_cfg.get("transfer", {})
+		visible_topic = _template_field(mode_cfg, "visibleTopic", values)
 	elif owner_id != &"" and owner_id != target_id:
-		visible_topic = "%s手里突然多了%s；这件东西原本属于%s。重点是%s如何处理这个突兀转手：护住、甩开、解释、试探或借题发挥。" % [target_name, item_name, owner_name, target_name]
+		visible_topic = _template_field(seed_cfg, "misplacedVisibleTopic", values)
 	if not is_transfer and not nearby_ids.is_empty():
-		type = "item_witness_interaction"
-		title = "%s处理%s被%s看见" % [target_name, item_name, _npc_name(StringName(nearby_ids[0]))]
-		visible_topic = "%s正在处理%s，%s在%.1fm内看见并被卷入" % [target_name, item_name, _npc_name(StringName(nearby_ids[0])), _item_involvement_radius_meters()]
-		goal = "先回应%s正在处理%s这件事，再让旁观者给出符合人设的目击反应。" % [target_name, item_name]
-		consequence = "4句内留下目击后果：尴尬、起哄、怀疑、维护、关系变化或新把柄之一。"
+		mode_cfg = seed_cfg.get("witness", {})
+		values["witness_name"] = _npc_name(StringName(nearby_ids[0]))
+		values["radius_meters"] = "%.1f" % _item_involvement_radius_meters()
+		visible_topic = _template_field(mode_cfg, "visibleTopic", values)
 	return {
-		"type": type,
-		"title": title,
-		"trigger_action": "观察者拖拽道具：%s -> %s" % [item_name, target_name],
+		"type": _template_field(mode_cfg, "type", values),
+		"title": _template_field(mode_cfg, "title", values),
+		"trigger_action": _template_field(seed_cfg, "triggerAction", values),
 		"actor": target_id,
 		"observer": previous_holder_id if is_transfer else (StringName(nearby_ids[0]) if not nearby_ids.is_empty() else &""),
 		"visible_topic": visible_topic,
 		"object_social_state": _item_social_state(item_id, target_id, is_transfer),
-		"emotional_charge": 78 if is_transfer else 64,
-		"conflict_question": "%s为什么会在%s手里？现场要把占有、嫌疑、偏爱、亏欠或笑料演出来。" % [item_name, target_name],
-		"required_shift": ["micro_action_seen", "object_consequence", "relation_pressure_shift"],
-		"allowed_outcomes": ["质问", "遮掩", "起哄", "推回", "临时保管", "形成梗"],
-		"stakes": "这个道具会改变谁被怀疑、谁欠谁解释、谁获得乐子或把柄。",
-		"interaction_goal": goal,
-		"consequence_rule": consequence,
+		"emotional_charge": _item_scene_emotional_charge(seed_cfg, is_transfer),
+		"conflict_question": _template_field(seed_cfg, "conflictQuestion", values),
+		"required_shift": _array_from(seed_cfg.get("requiredShift", [])),
+		"allowed_outcomes": _array_from(seed_cfg.get("allowedOutcomes", [])),
+		"stakes": _template_field(seed_cfg, "stakes", values),
+		"interaction_goal": _template_field(mode_cfg, "goal", values),
+		"consequence_rule": _template_field(mode_cfg, "consequence", values),
 	}
 
 
+func _item_scene_emotional_charge(seed_cfg: Dictionary, is_transfer: bool) -> int:
+	var charge_cfg: Dictionary = seed_cfg.get("emotionalCharge", {})
+	return int(charge_cfg.get("transfer" if is_transfer else "solo", 0))
+
+
 func _npc_scene_seed(primary_id: StringName, target_id: StringName) -> Dictionary:
+	var seed_cfg := _interaction_config("npcSceneSeed")
+	var values := {
+		"primary_name": _npc_name(primary_id),
+		"target_name": _npc_name(target_id),
+	}
 	return {
-		"type": "activity_collision",
-		"title": "%s撞见%s" % [_npc_name(primary_id), _npc_name(target_id)],
-		"trigger_action": "观察者把两名 NPC 拖到一起",
+		"type": _template_field(seed_cfg, "type", values),
+		"title": _template_field(seed_cfg, "title", values),
+		"trigger_action": _template_field(seed_cfg, "triggerAction", values),
 		"actor": primary_id,
 		"observer": target_id,
-		"visible_topic": "%s被拖到%s身边，双方必须先回应眼前距离和正在做的事。" % [_npc_name(primary_id), _npc_name(target_id)],
-		"emotional_charge": 62,
-		"conflict_question": "这次被迫靠近会制造尴尬、试探、起哄、怀疑还是临时合作？",
-		"required_shift": ["relationship_change"],
-		"allowed_outcomes": ["试探", "反击", "起哄", "让步", "形成临时目标"],
-		"stakes": "对话必须留下关系或行动后果。",
-		"interaction_goal": "把普通相遇变成一次关系试探，让好感、尴尬、怀疑、乐子或亏欠至少有一个发生变化。",
-		"consequence_rule": "4句内必须留下明确后果，不能只是互相调侃后散开。",
+		"visible_topic": _template_field(seed_cfg, "visibleTopic", values),
+		"emotional_charge": int(seed_cfg.get("emotionalCharge", 0)),
+		"conflict_question": _template_field(seed_cfg, "conflictQuestion", values),
+		"required_shift": _array_from(seed_cfg.get("requiredShift", [])),
+		"allowed_outcomes": _array_from(seed_cfg.get("allowedOutcomes", [])),
+		"stakes": _template_field(seed_cfg, "stakes", values),
+		"interaction_goal": _template_field(seed_cfg, "goal", values),
+		"consequence_rule": _template_field(seed_cfg, "consequence", values),
 	}
 
 
 func _item_relationship_hint(item_id: StringName, target_id: StringName, previous_holder_id: StringName, nearby_ids: Array) -> String:
-	var item = entity_registry.items.get(item_id)
-	var item_name: String = item.name if item != null else str(item_id)
+	var values := _item_template_values(item_id, target_id, previous_holder_id)
 	if previous_holder_id != &"" and previous_holder_id != target_id:
-		return "这是明确的物品交接，不是捡到或凭空出现；NPC必须回应%s为什么从%s到%s。" % [item_name, _npc_name(previous_holder_id), _npc_name(target_id)]
+		return _interaction_template("relationshipHints", "itemTransfer", values)
 	if not nearby_ids.is_empty():
-		return "这是道具近距离目击事件，旁观者可以起哄、误读或追问，但必须围绕%s现在在%s手里。" % [item_name, _npc_name(target_id)]
-	return "这是单人道具反应，只表现 NPC 与物品的关系，不牵涉其他 NPC。"
+		return _interaction_template("relationshipHints", "itemWitness", values)
+	return _interaction_template("relationshipHints", "itemSolo", values)
 
 
 func _item_social_state(item_id: StringName, target_id: StringName, is_transfer: bool = false) -> String:
@@ -1034,9 +1266,117 @@ func _npc_name(npc_id: StringName) -> String:
 
 func _emit_interaction_feedback(event, npc_ids: Array) -> void:
 	var participants := _valid_unique_npc_ids(npc_ids)
+	_remember_event_for_npcs(event, participants)
 	_pause_feedback_participants(participants)
 	for npc_id in participants:
+		_emit_interaction_performance_text(event, npc_id)
 		_emit_npc_feedback(event, npc_id)
+
+
+func _emit_interaction_performance_text(event, npc_id: StringName) -> void:
+	if event == null or npc_performance_director == null or entity_registry == null or not entity_registry.npcs.has(npc_id):
+		return
+	var payload: Dictionary = event.payload if event.payload is Dictionary else {}
+	var plan: Dictionary = payload.get("performance_plan", {})
+	if plan.is_empty():
+		return
+	var judgement: Dictionary = _performance_judgement_from_payload(payload, npc_id)
+	var rendered: String = npc_performance_director.render_plan(plan, judgement)
+	if rendered.is_empty():
+		return
+	event.payload["interaction_performance_text"] = rendered
+	_add_npc_chat_line(npc_id, rendered)
+	if entity_visual_layer != null and entity_visual_layer.npc_visuals.has(npc_id):
+		entity_visual_layer.npc_visuals[npc_id].show_bubble(rendered)
+
+
+func _performance_judgement_from_payload(payload: Dictionary, npc_id: StringName) -> Dictionary:
+	var stance: Dictionary = payload.get("gift_stance", {})
+	var result := str(stance.get("result", "ambivalent"))
+	var judgement_result := "neutral"
+	if ["like", "like_then_reject"].has(result):
+		judgement_result = "help"
+	elif ["reject", "accept_then_discard"].has(result):
+		judgement_result = "harm"
+	var labels: Dictionary = wellbeing_config.get("feedbackTags", {}) if wellbeing_config is Dictionary else {}
+	return {
+		"result": judgement_result,
+		"reason": str(stance.get("dominantReason", "object_interaction")),
+		"resultLabel": str(labels.get(judgement_result, judgement_result)),
+		"npcId": str(npc_id),
+	}
+
+
+func assign_daily_wellbeing_problem() -> void:
+	if entity_registry == null or wellbeing_config.is_empty():
+		return
+	var day: int = game_clock.day if game_clock != null else 1
+	var assigned: Dictionary = WellbeingRulesScript.assign_daily_problem(entity_registry.npcs, wellbeing_config, day)
+	if not assigned.is_empty() and entity_visual_layer != null:
+		entity_visual_layer.sync_from_registry(entity_registry)
+
+
+func _apply_wellbeing_to_event(event) -> void:
+	if event == null or wellbeing_config.is_empty() or entity_registry == null:
+		return
+	var target_id := _wellbeing_target_npc_id(event)
+	if target_id == &"" or not entity_registry.npcs.has(target_id):
+		return
+	var item = _wellbeing_event_item(event)
+	var npc = entity_registry.npcs[target_id]
+	var judgement: Dictionary = WellbeingRulesScript.evaluate_event(event, npc, item, wellbeing_config)
+	if judgement.is_empty():
+		return
+	event.payload["wellbeing_judgement"] = judgement
+	if npc_performance_director == null:
+		return
+	npc_performance_director.request_plan(judgement, npc, item, func(plan: Dictionary) -> void:
+		if plan.is_empty():
+			return
+		event.payload["wellbeing_performance_plan"] = plan
+		var rendered: String = npc_performance_director.render_plan(plan, judgement)
+		if not rendered.is_empty():
+			event.payload["wellbeing_feedback_text"] = rendered
+			event.payload["event_text"] = rendered
+			_update_feedback_text(rendered)
+			_add_npc_chat_line(target_id, rendered)
+			if entity_visual_layer != null and entity_visual_layer.npc_visuals.has(target_id):
+				entity_visual_layer.npc_visuals[target_id].show_bubble(rendered)
+	)
+
+
+func _add_npc_chat_line(npc_id: StringName, message: String) -> void:
+	var clean_message := message.strip_edges()
+	if clean_message.is_empty() or npc_chat_panel == null or not npc_chat_panel.has_method("add_line"):
+		return
+	var speaker := str(npc_id)
+	if entity_registry != null and entity_registry.npcs.has(npc_id):
+		speaker = str(entity_registry.npcs[npc_id].name)
+	npc_chat_panel.add_line(speaker, clean_message)
+
+
+func _wellbeing_target_npc_id(event) -> StringName:
+	var event_type := StringName(event.type if event != null else &"")
+	var payload: Dictionary = event.payload if event != null and event.payload is Dictionary else {}
+	if event_type == &"player_drop_npc_near_npc":
+		var target_id := StringName(payload.get("target_npc_id", event.target_entity_id))
+		return target_id if target_id != &"" else StringName(event.target_entity_id)
+	if event_type == &"player_forced_drop_item":
+		return StringName(payload.get("item_target_id", event.target_entity_id))
+	return StringName(payload.get("item_target_id", event.target_entity_id))
+
+
+func _wellbeing_event_item(event):
+	if event == null or entity_registry == null:
+		return null
+	var item_id := StringName(event.primary_entity_id)
+	if item_id != &"" and entity_registry.items.has(item_id):
+		return entity_registry.items[item_id]
+	var payload: Dictionary = event.payload if event.payload is Dictionary else {}
+	item_id = StringName(payload.get("item_id", &""))
+	if item_id != &"" and entity_registry.items.has(item_id):
+		return entity_registry.items[item_id]
+	return null
 
 
 func _valid_unique_npc_ids(npc_ids: Array) -> Array:
@@ -1063,6 +1403,63 @@ func _pause_npc_for_feedback(npc_id: StringName, seconds: float = FEEDBACK_PAUSE
 	npc_feedback_pause_until_ms[npc_id] = max(int(npc_feedback_pause_until_ms.get(npc_id, 0)), until_ms)
 
 
+func _remember_event_for_npcs(event, npc_ids: Array) -> void:
+	if event == null or entity_registry == null:
+		return
+	for raw_id in npc_ids:
+		_remember_event_for_npc(event, StringName(raw_id))
+
+
+func _remember_event_for_npc(event, npc_id: StringName) -> void:
+	if npc_id == &"" or not entity_registry.npcs.has(npc_id):
+		return
+	var npc = entity_registry.npcs[npc_id]
+	var event_id := StringName(event.id if event != null else &"")
+	if event_id != &"":
+		for remembered in npc.recent_events:
+			if remembered != null and StringName(remembered.id) == event_id:
+				return
+	var snapshot = InteractionEventScript.from_dict(event.to_dict()) if event != null and event.has_method("to_dict") else event
+	npc.recent_events.append(snapshot)
+	_trim_npc_recent_events(npc)
+
+
+func _remember_npc_feedback_line(npc_id: StringName, source_event, line: String) -> void:
+	var clean_line := line.strip_edges()
+	if clean_line.is_empty() or entity_registry == null or not entity_registry.npcs.has(npc_id):
+		return
+	var npc = entity_registry.npcs[npc_id]
+	var source_event_id := str(source_event.id if source_event != null else "")
+	var memory_id := StringName("%s:%s:reply" % [source_event_id, str(npc_id)])
+	for remembered in npc.recent_events:
+		if remembered != null and StringName(remembered.id) == memory_id:
+			return
+	var reply_event = InteractionEventScript.from_dict({
+		"id": memory_id,
+		"type": "npc_feedback_line",
+		"actor_id": str(npc_id),
+		"primary_entity_id": str(npc_id),
+		"target_entity_id": str(source_event.primary_entity_id if source_event != null else ""),
+		"target_type": str(source_event.target_type if source_event != null else "npc"),
+		"cell": ConstantsScript.cell_to_dict(npc.current_cell),
+		"tick": tick,
+		"payload": {
+			"source": "npc_feedback",
+			"sourceEventId": source_event_id,
+			"speakerNpcId": str(npc_id),
+			"speakerName": npc.name,
+			"text": clean_line,
+		},
+	})
+	npc.recent_events.append(reply_event)
+	_trim_npc_recent_events(npc)
+
+
+func _trim_npc_recent_events(npc) -> void:
+	while npc != null and npc.recent_events.size() > NPC_RECENT_MEMORY_LIMIT:
+		npc.recent_events.pop_front()
+
+
 func _is_npc_feedback_paused(npc_id: StringName) -> bool:
 	if not npc_feedback_pause_until_ms.has(npc_id):
 		return false
@@ -1076,6 +1473,7 @@ func _is_npc_feedback_paused(npc_id: StringName) -> bool:
 func _emit_npc_feedback(event, npc_id: StringName) -> void:
 	if npc_feedback_builder == null or event == null or not entity_registry.npcs.has(npc_id):
 		return
+	_remember_event_for_npcs(event, [npc_id])
 	_pause_npc_for_feedback(npc_id)
 	var npc = entity_registry.npcs[npc_id]
 	var world_context := {
@@ -1088,9 +1486,318 @@ func _emit_npc_feedback(event, npc_id: StringName) -> void:
 		_pause_npc_for_feedback(npc_id)
 		if entity_visual_layer != null and entity_visual_layer.npc_visuals.has(npc_id):
 			entity_visual_layer.npc_visuals[npc_id].show_bubble(chunk)
-	, func(_result: Dictionary) -> void:
-		pass
+	, func(result: Dictionary) -> void:
+		var final_text := str(result.get("text", ""))
+		_remember_npc_feedback_line(npc_id, event, final_text)
+		_add_npc_chat_line(npc_id, final_text)
+		)
+
+
+func submit_npc_chat_message(target_npc_id: StringName, message: String) -> void:
+	var clean_message := message.strip_edges()
+	if clean_message.is_empty() or entity_registry == null or not entity_registry.npcs.has(target_npc_id):
+		return
+	var target = entity_registry.npcs[target_npc_id]
+	if npc_chat_panel != null and npc_chat_panel.has_method("add_line"):
+		npc_chat_panel.add_line(_chat_player_speaker_label(target), clean_message)
+	if npc_chat_panel != null and npc_chat_panel.has_method("set_waiting"):
+		npc_chat_panel.set_waiting(true)
+	var event = _event_from_chat_message(target_npc_id, clean_message)
+	if event == null:
+		if npc_chat_panel != null and npc_chat_panel.has_method("set_waiting"):
+			npc_chat_panel.set_waiting(false)
+		return
+	_update_feedback_text(str(event.payload.get("event_text", clean_message)))
+	_emit_npc_chat_feedback(event, target_npc_id)
+
+
+func _chat_player_speaker_label(target) -> String:
+	var panel_cfg: Dictionary = gameplay_config.get("ui", {}).get("chatPanel", {})
+	return _format_template(str(panel_cfg.get("playerSpeakerTemplate", "{npc_name}")), {"npc_name": str(target.name if target != null else "")})
+
+
+func _event_from_chat_message(target_npc_id: StringName, message: String):
+	var transfer := _parse_chat_transfer(target_npc_id, message)
+	if bool(transfer.get("ok", false)):
+		return _apply_chat_transfer_event(target_npc_id, message, transfer)
+	return _record_direct_chat_event(target_npc_id, message)
+
+
+func _record_direct_chat_event(target_npc_id: StringName, message: String):
+	var npc = entity_registry.npcs[target_npc_id]
+	var chat_cfg := _interaction_config("playerChat")
+	var values := {
+		"npc_name": npc.name,
+		"message": message,
+	}
+	var payload := {
+		"source": "player_chat",
+		"player_message": message,
+		"npc_ids": [target_npc_id],
+		"primary_npc_ids": [target_npc_id],
+		"participant_actions": [{
+			"npc_id": target_npc_id,
+			"name": npc.name,
+			"intention_label": _template_field(chat_cfg, "participantLabel", values),
+			"intention_motive": _template_field(chat_cfg, "participantMotive", values),
+			"desired_outcome": _template_field(chat_cfg, "participantDesiredOutcome", values),
+		}],
+		"recent_actions": [_template_field(chat_cfg, "recentAction", values)],
+		"event_text": _template_field(chat_cfg, "eventText", values),
+		"scene_seed": _chat_scene_seed(chat_cfg.get("sceneSeed", {}), target_npc_id, values),
+		"relationship_hint": _template_field(chat_cfg, "relationshipHint", values),
+	}
+	var event = event_log.record(&"player_chat_to_npc", target_npc_id, target_npc_id, &"npc", npc.current_cell, payload, &"player", tick)
+	_remember_event_for_npcs(event, [target_npc_id])
+	return event
+
+
+func _chat_scene_seed(seed_cfg: Dictionary, target_npc_id: StringName, values: Dictionary) -> Dictionary:
+	return {
+		"type": _template_field(seed_cfg, "type", values),
+		"title": _template_field(seed_cfg, "title", values),
+		"trigger_action": _template_field(seed_cfg, "triggerAction", values),
+		"actor": target_npc_id,
+		"observer": &"player",
+		"visible_topic": _template_field(seed_cfg, "visibleTopic", values),
+		"emotional_charge": int(seed_cfg.get("emotionalCharge", 0)),
+		"conflict_question": _template_field(seed_cfg, "conflictQuestion", values),
+		"required_shift": _array_from(seed_cfg.get("requiredShift", [])),
+		"allowed_outcomes": _array_from(seed_cfg.get("allowedOutcomes", [])),
+		"stakes": _template_field(seed_cfg, "stakes", values),
+		"interaction_goal": _template_field(seed_cfg, "goal", values),
+		"consequence_rule": _template_field(seed_cfg, "consequence", values),
+	}
+
+
+func _parse_chat_transfer(target_npc_id: StringName, message: String) -> Dictionary:
+	if not _looks_like_transfer_text(message):
+		return {"ok": false}
+	var item_id := _find_item_in_text(message)
+	var giver_id := _find_giver_before_transfer_marker(message, target_npc_id)
+	var recipient_id := _find_explicit_recipient_after_transfer_marker(message, target_npc_id)
+	if recipient_id == &"":
+		recipient_id = target_npc_id
+	if item_id == &"" or giver_id == &"" or recipient_id == &"":
+		return {"ok": false}
+	return {
+		"ok": true,
+		"item_id": item_id,
+		"giver_id": giver_id,
+		"recipient_id": recipient_id,
+	}
+
+
+func _apply_chat_transfer_event(target_npc_id: StringName, message: String, transfer: Dictionary):
+	var item_id := StringName(transfer.get("item_id", &""))
+	var giver_id := StringName(transfer.get("giver_id", &""))
+	var recipient_id := StringName(transfer.get("recipient_id", target_npc_id))
+	if item_id == &"" or giver_id == &"" or not entity_registry.items.has(item_id) or not entity_registry.npcs.has(recipient_id):
+		return _record_direct_chat_event(target_npc_id, message)
+	entity_registry.give_item_to_npc(item_id, recipient_id)
+	var payload := _item_event_payload(item_id, recipient_id, giver_id, {
+		"operator": "player_chat_report",
+		"giverNpcId": giver_id,
+		"receiverNpcId": recipient_id,
+		"fromAnchor": {"type": "npc", "npcId": str(giver_id)},
+		"toAnchor": {"type": "npc", "npcId": str(recipient_id)},
+		"attributionTarget": "npc",
+		"attributionConfidence": 1.0,
+	})
+	var world_event_text := str(payload.get("event_text", ""))
+	var auto_drop := _maybe_auto_drop_rejected_item(item_id, recipient_id, payload)
+	if not auto_drop.is_empty():
+		payload["npc_auto_drop"] = auto_drop
+		payload["currentAnchor"] = auto_drop.get("finalAnchor", {"type": "ground"})
+		payload["finalAnchor"] = auto_drop.get("finalAnchor", {"type": "ground"})
+		world_event_text = _event_text_template("autoDrop", {
+			"target_name": str(payload.get("item_target_name", recipient_id)),
+			"item_name": str(payload.get("item_name", item_id)),
+		})
+	payload["source"] = "player_chat_reported_transfer"
+	payload["player_message"] = message
+	payload["reported_by_chat_target_id"] = target_npc_id
+	payload["reported_by_chat_target_name"] = _npc_name(target_npc_id)
+	var reported_cfg := _interaction_config("reportedTransfer")
+	var reported_values := {
+		"target_name": _npc_name(target_npc_id),
+		"message": message,
+		"item_name": str(payload.get("item_name", item_id)),
+		"giver_name": _npc_name(giver_id),
+		"recipient_name": _npc_name(recipient_id),
+	}
+	payload["event_text"] = _template_field(reported_cfg, "eventText", reported_values)
+	payload["recent_actions"] = [_template_field(reported_cfg, "recentAction", reported_values), world_event_text]
+	var scene_seed: Dictionary = payload.get("scene_seed", {})
+	scene_seed["trigger_action"] = _template_field(reported_cfg, "sceneTriggerAction", reported_values)
+	var world_fact := _template_field(reported_cfg, "worldFact", reported_values)
+	if not auto_drop.is_empty():
+		world_fact = _template_field(reported_cfg, "autoDropWorldFact", reported_values)
+	reported_values["world_fact"] = world_fact
+	scene_seed["visible_topic"] = _template_field(reported_cfg, "visibleTopic", reported_values)
+	payload["scene_seed"] = scene_seed
+	var event = event_log.record(&"player_chat_reported_item_transfer", item_id, recipient_id, &"npc", entity_registry.npcs[recipient_id].current_cell, payload, &"player", tick)
+	_remember_event_for_npcs(event, _valid_unique_npc_ids([target_npc_id, recipient_id, giver_id]))
+	return event
+
+
+func _emit_npc_chat_feedback(event, npc_id: StringName) -> void:
+	if npc_feedback_builder == null or event == null or not entity_registry.npcs.has(npc_id):
+		return
+	_remember_event_for_npcs(event, [npc_id])
+	_pause_npc_for_feedback(npc_id)
+	var npc = entity_registry.npcs[npc_id]
+	var world_context := {
+		"entity_registry": entity_registry,
+		"place_registry": place_registry,
+		"event_log": event_log,
+	}
+	npc_feedback_builder.stream_feedback(event, npc, world_context, func(chunk: String) -> void:
+		_update_feedback_text(chunk)
+		_pause_npc_for_feedback(npc_id)
+		if entity_visual_layer != null and entity_visual_layer.npc_visuals.has(npc_id):
+			entity_visual_layer.npc_visuals[npc_id].show_bubble(chunk)
+	, func(result: Dictionary) -> void:
+		var final_text := str(result.get("text", ""))
+		_remember_npc_feedback_line(npc_id, event, final_text)
+		_add_npc_chat_line(npc_id, final_text)
+		if npc_chat_panel != null and npc_chat_panel.has_method("set_waiting"):
+			npc_chat_panel.set_waiting(false)
 	)
+
+
+func _looks_like_transfer_text(text: String) -> bool:
+	for marker in _chat_transfer_markers():
+		if text.find(marker) >= 0:
+			return true
+	return false
+
+
+func _chat_transfer_markers() -> Array:
+	var chat_cfg: Dictionary = _chat_config()
+	return _array_from(chat_cfg.get("transferMarkers", []))
+
+
+func _chat_pronoun_recipients() -> Array:
+	var chat_cfg: Dictionary = _chat_config()
+	return _array_from(chat_cfg.get("pronounRecipients", []))
+
+
+func _chat_config() -> Dictionary:
+	var chat_cfg: Dictionary = gameplay_config.get("chat", {})
+	if chat_cfg.is_empty():
+		chat_cfg = ConfigLoaderScript.load_gameplay_config().get("chat", {})
+	return chat_cfg
+
+
+func _find_npc_in_text(text: String, exclude_id: StringName = &"") -> StringName:
+	var best_id: StringName = &""
+	var best_len := 0
+	for npc in entity_registry.npcs.values():
+		if npc.id == exclude_id:
+			continue
+		for alias in _npc_text_aliases(npc):
+			if alias.length() > best_len and text.find(alias) >= 0:
+				best_id = npc.id
+				best_len = alias.length()
+	return best_id
+
+
+func _find_giver_before_transfer_marker(text: String, exclude_id: StringName = &"") -> StringName:
+	var marker_start := -1
+	for marker in _chat_transfer_markers():
+		var pos := text.find(marker)
+		if pos >= 0 and (marker_start < 0 or pos < marker_start):
+			marker_start = pos
+	if marker_start < 0:
+		return _find_npc_in_text(text, exclude_id)
+	var giver_id := _find_npc_in_text(text.substr(0, marker_start), exclude_id)
+	if giver_id != &"":
+		return giver_id
+	return _find_npc_in_text(text, exclude_id)
+
+
+func _find_explicit_recipient_after_transfer_marker(text: String, fallback_id: StringName = &"") -> StringName:
+	var marker_pos := -1
+	for marker in _chat_transfer_markers():
+		var pos := text.find(marker)
+		if pos >= 0 and (marker_pos < 0 or pos < marker_pos):
+			marker_pos = pos + marker.length()
+	if marker_pos < 0:
+		return fallback_id
+	var tail := text.substr(marker_pos)
+	var best_id: StringName = &""
+	var best_pos := 999999
+	var best_len := 0
+	for npc in entity_registry.npcs.values():
+		for alias in _npc_text_aliases(npc):
+			var pos := tail.find(alias)
+			if pos >= 0 and (pos < best_pos or (pos == best_pos and alias.length() > best_len)):
+				best_id = npc.id
+				best_pos = pos
+				best_len = alias.length()
+	if best_id == &"" and _text_has_pronoun_recipient(tail):
+		return fallback_id
+	return best_id
+
+
+func _text_has_pronoun_recipient(text: String) -> bool:
+	for pronoun in _chat_pronoun_recipients():
+		if text.find(pronoun) >= 0:
+			return true
+	return false
+
+
+func _find_item_in_text(text: String) -> StringName:
+	var best_id: StringName = &""
+	var best_len := 0
+	for item in entity_registry.items.values():
+		for alias in _item_text_aliases(item):
+			if alias.length() > best_len and text.find(alias) >= 0:
+				best_id = item.id
+				best_len = alias.length()
+	return best_id
+
+
+func _npc_text_aliases(npc) -> Array[String]:
+	var aliases: Array[String] = []
+	for value in [str(npc.id), npc.name]:
+		if not value.is_empty() and not aliases.has(value):
+			aliases.append(value)
+	var raw_aliases: Variant = _object_field(npc, "aliases", [])
+	if raw_aliases is Array:
+		for raw_alias in raw_aliases:
+			var alias := str(raw_alias)
+			if not alias.is_empty() and not aliases.has(alias):
+				aliases.append(alias)
+	return aliases
+
+
+func _item_text_aliases(item) -> Array[String]:
+	var aliases: Array[String] = []
+	for value in [str(item.id), str(item.type_id), item.name, item.category]:
+		if not value.is_empty() and not aliases.has(value):
+			aliases.append(value)
+	var object_type: Dictionary = entity_registry.object_types.get(str(item.type_id), entity_registry.object_types.get(item.type_id, {}))
+	var type_name := str(object_type.get("name", ""))
+	if not type_name.is_empty() and not aliases.has(type_name):
+		aliases.append(type_name)
+	var raw_aliases: Variant = object_type.get("aliases", [])
+	if raw_aliases is Array:
+		for raw_alias in raw_aliases:
+			var alias := str(raw_alias)
+			if not alias.is_empty() and not aliases.has(alias):
+				aliases.append(alias)
+	return aliases
+
+
+func _object_field(value, field_name: String, fallback = null) -> Variant:
+	if value is Dictionary:
+		return value.get(field_name, fallback)
+	if value != null and value is Object:
+		var field_value: Variant = value.get(field_name)
+		return fallback if field_value == null else field_value
+	return fallback
 
 
 func toggle_fenced_area_mode() -> void:
@@ -1098,12 +1805,12 @@ func toggle_fenced_area_mode() -> void:
 	grid_selection_overlay.enabled = true
 	grid_selection_overlay.build_mode = fenced_area_mode
 	grid_selection_overlay.queue_redraw()
-	_update_feedback_text("FencedArea mode %s" % ("on" if fenced_area_mode else "off"))
+	_update_feedback_text(_ui_message("fencedAreaMode", {"mode": "on" if fenced_area_mode else "off"}))
 
 
 func confirm_fenced_area_from_drag(selection_rect: Rect2i, drag_end_cell: Vector2i) -> void:
 	if selection_rect.size.x < 3 or selection_rect.size.y < 3:
-		_update_feedback_text("FencedArea needs at least 3x3")
+		_update_feedback_text(_ui_message("fencedAreaSizeHint"))
 		return
 	if fenced_area_edit_panel != null:
 		fenced_area_edit_panel.current_tick = tick
@@ -1112,16 +1819,16 @@ func confirm_fenced_area_from_drag(selection_rect: Rect2i, drag_end_cell: Vector
 
 func create_fenced_area_mode() -> void:
 	fenced_area_mode = true
-	_update_feedback_text("Drag a 3x3 or larger fenced area")
+	_update_feedback_text(_ui_message("fencedAreaDragHint"))
 
 
 func on_fenced_area_placement_confirmed(result: Dictionary) -> void:
 	if result.get("ok", false):
 		fenced_area_mode = false
 		fenced_area_overlay.refresh_from_registry()
-		_update_feedback_text("Created %s" % result["place"].name)
+		_update_feedback_text(_ui_message("fencedAreaCreated", {"place_name": str(result["place"].name)}))
 	else:
-		_update_feedback_text("FencedArea failed: %s" % str(result.get("reason", "unknown")))
+		_update_feedback_text(_ui_message("fencedAreaFailed", {"reason": str(result.get("reason", "unknown"))}))
 
 
 func update_feedback_reaction(event_text: String) -> void:
@@ -1142,14 +1849,14 @@ func generate_daily_todo_hotkey_placeholder() -> void:
 ##        on_done 仍 ok=true 带一个 wander todo；UI 提示 "LLM disabled / fallback"。
 func request_daily_todos_for_all_npcs() -> void:
 	if daily_todo_planner == null or llm_transport == null or llm_client == null:
-		_update_feedback_text("LLM services not wired")
+		_update_feedback_text(_ui_message("llmServicesMissing"))
 		return
 
 	var llm_enabled := llm_config != null and bool(llm_config.enabled)
 	if llm_enabled:
-		_update_feedback_text("Requesting daily todos from LLM...")
+		_update_feedback_text(_ui_message("requestDailyTodos"))
 	else:
-		_update_feedback_text("LLM disabled / fallback (set OPENROUTER_API_KEY in .env)")
+		_update_feedback_text(_ui_message("llmDisabledFallback"))
 
 	var world := {
 		"entity_registry": entity_registry,
@@ -1172,7 +1879,7 @@ func _on_daily_todos_ready(npc, result: Dictionary, llm_enabled: bool) -> void:
 	if not bool(result.get("ok", false)):
 		var status := StringName(result.get("status", ""))
 		if status == &"late" or status == &"cancelled":
-			_update_feedback_text("NPC %s daily plan superseded by newer request" % npc_id)
+			_update_feedback_text(_ui_message("dailyPlanSuperseded", {"npc_id": npc_id}))
 			return
 
 	var todos: Variant = result.get("todos", [])
@@ -1187,9 +1894,9 @@ func _on_daily_todos_ready(npc, result: Dictionary, llm_enabled: bool) -> void:
 		npc.todo_list.append(todo)
 
 	if llm_enabled:
-		_update_feedback_text("NPC %s daily todos: %d" % [npc_id, (todos as Array).size()])
+		_update_feedback_text(_ui_message("dailyTodosReady", {"npc_id": npc_id, "count": str((todos as Array).size())}))
 	else:
-		_update_feedback_text("LLM disabled / fallback wander for NPC %s" % npc_id)
+		_update_feedback_text(_ui_message("dailyFallbackReady", {"npc_id": npc_id}))
 
 
 ## 移除该 NPC todo_list 中 status==pending 的 todo（未开始的当天计划残留）。
@@ -1304,12 +2011,12 @@ func save_game_state() -> void:
 		"events": event_log.to_dict(),
 		"selected_entity_id": selected_entity_id,
 	}
-	_update_feedback_text("Saved")
+	_update_feedback_text(_ui_message("saved"))
 
 
 func load_game_state() -> void:
 	if saved_snapshot.is_empty():
-		_update_feedback_text("No save snapshot")
+		_update_feedback_text(_ui_message("noSaveSnapshot"))
 		return
 	entity_registry.load_from_dict(saved_snapshot.get("entities", {}))
 	place_registry.load_from_dict(saved_snapshot.get("places", {}))
@@ -1317,7 +2024,7 @@ func load_game_state() -> void:
 	event_log.load_from_dict(saved_snapshot.get("events", {}))
 	selected_entity_id = StringName(saved_snapshot.get("selected_entity_id", ""))
 	fenced_area_overlay.refresh_from_registry()
-	_update_feedback_text("Loaded")
+	_update_feedback_text(_ui_message("loaded"))
 
 
 func _resolve_scene_nodes() -> void:
@@ -1361,6 +2068,8 @@ func _resolve_scene_nodes() -> void:
 		entity_visual_layer = preload("res://scripts/ui/EntityVisualLayer.gd").new()
 		entity_visual_layer.name = "EntityVisualLayer"
 		world_map.add_child(entity_visual_layer)
+	if entity_visual_layer != null and entity_visual_layer.has_method("configure_wellbeing"):
+		entity_visual_layer.configure_wellbeing(wellbeing_config)
 
 
 func _fit_world_background(bg_path: String) -> void:
@@ -1386,6 +2095,65 @@ func _load_png_texture(path: String) -> Texture2D:
 	if image.load_png_from_buffer(file.get_buffer(file.get_length())) != OK:
 		return null
 	return ImageTexture.create_from_image(image)
+
+
+func _load_runtime_configs() -> void:
+	gameplay_config = ConfigLoaderScript.load_gameplay_config()
+	wellbeing_config = ConfigLoaderScript.load_wellbeing_config()
+
+
+func _world_background_path() -> String:
+	var world_cfg: Dictionary = gameplay_config.get("world", {})
+	return str(world_cfg.get("backgroundPath", ""))
+
+
+func _ui_message(key: String, values: Dictionary = {}, fallback: String = "") -> String:
+	var messages: Dictionary = gameplay_config.get("ui", {}).get("messages", {})
+	var template := str(messages.get(key, fallback))
+	return _format_template(template, values)
+
+
+func _controls_text(expanded: bool) -> String:
+	var controls: Dictionary = gameplay_config.get("ui", {}).get("controls", {})
+	return str(controls.get("expandedText" if expanded else "collapsedText", ""))
+
+
+func _interaction_template(section: String, key: String, values: Dictionary = {}, fallback: String = "") -> String:
+	var templates: Dictionary = _interaction_templates_config()
+	var section_cfg: Dictionary = templates.get(section, {})
+	return _format_template(str(section_cfg.get(key, fallback)), values)
+
+
+func _interaction_config(section: String) -> Dictionary:
+	var templates: Dictionary = _interaction_templates_config()
+	return templates.get(section, {})
+
+
+func _interaction_templates_config() -> Dictionary:
+	var templates: Dictionary = gameplay_config.get("interactionTemplates", {})
+	if templates.is_empty():
+		var loaded: Dictionary = ConfigLoaderScript.load_gameplay_config()
+		templates = loaded.get("interactionTemplates", {})
+	return templates
+
+
+func _template_field(config: Dictionary, key: String, values: Dictionary = {}, fallback: String = "") -> String:
+	return _format_template(str(config.get(key, fallback)), values)
+
+
+func _event_text_template(key: String, values: Dictionary = {}, fallback: String = "") -> String:
+	return _interaction_template("eventText", key, values, fallback)
+
+
+func _format_template(template: String, values: Dictionary) -> String:
+	var result := template
+	for key in values.keys():
+		result = result.replace("{%s}" % str(key), str(values[key]))
+	return result
+
+
+func _array_from(value: Variant) -> Array:
+	return value.duplicate(true) if value is Array else []
 
 
 func _wire_core_world_services() -> void:
@@ -1419,6 +2187,9 @@ func _wire_npc_llm_services() -> void:
 	npc_feedback_builder = NPCFeedbackBuilderScript.new()
 	npc_feedback_builder.configure(entity_registry, place_registry, pathfinder, event_log, llm_client, llm_transport)
 
+	npc_performance_director = NPCPerformanceDirectorScript.new()
+	npc_performance_director.configure(wellbeing_config, llm_client, llm_transport)
+
 	# 执行层：TodoExecutor 消费 todo（瞬移式移动），NPCActionScheduler 管 lane 锁。
 	# 每个 NPC 的 NPCMover 按需在 _mover_for 里懒创建（seed 在本方法之后才跑）。
 	action_scheduler = NPCActionSchedulerScript.new()
@@ -1427,12 +2198,15 @@ func _wire_npc_llm_services() -> void:
 
 
 func _seed_sample_npc_item_data() -> void:
-	gameplay_config = ConfigLoaderScript.load_gameplay_config()
+	if gameplay_config.is_empty() and wellbeing_config.is_empty():
+		_load_runtime_configs()
+	if npc_performance_director != null:
+		npc_performance_director.configure(wellbeing_config, llm_client, llm_transport)
+	if entity_visual_layer != null and entity_visual_layer.has_method("configure_wellbeing"):
+		entity_visual_layer.configure_wellbeing(wellbeing_config)
 	var loaded_npcs: Dictionary = ConfigLoaderScript.load_npc_configs()
 	npc_config_by_id = loaded_npcs.get("by_id", {})
 	var npc_configs: Array = loaded_npcs.get("configs", [])
-	if npc_configs.is_empty():
-		npc_configs = _fallback_stardive_npcs()
 
 	for cfg in npc_configs:
 		var npc = NPCStateScript.from_dict(cfg)
@@ -1470,28 +2244,38 @@ func _seed_places_from_gameplay() -> void:
 func _seed_initial_todos_from_intentions() -> void:
 	var free_roam: Dictionary = gameplay_config.get("free_roam", {})
 	var intentions: Dictionary = free_roam.get("intentions", {})
+	var default_todo: Dictionary = free_roam.get("defaultTodo", {})
 	for npc in entity_registry.npcs.values():
 		var npc_intentions: Array = intentions.get(str(npc.id), [])
 		if npc_intentions.is_empty():
-			npc.todo_list = [TodoItemScript.from_dict({
-				"id": "todo_%s_seed_wander" % str(npc.id),
-				"intent": "wander",
-				"reason": "%s先在鹅城里观察情况" % npc.name,
-				"priority": 10,
-				"status": "pending",
-			})]
+			npc.todo_list = [_default_seed_todo(npc, default_todo)]
 			continue
 		var intention: Dictionary = npc_intentions[0]
 		var locations: Array = intention.get("locations", [])
 		var location_id := str(locations[0].get("location", "")) if not locations.is_empty() and locations[0] is Dictionary else ""
 		npc.todo_list = [TodoItemScript.from_dict({
-			"id": "todo_%s_%s" % [str(npc.id), str(intention.get("id", "seed"))],
-			"intent": "visit_place",
-			"target_place_id": location_id,
-			"reason": str(intention.get("label", "按动机行动")),
-			"priority": 50,
-			"status": "pending",
-		})]
+		"id": "todo_%s_%s" % [str(npc.id), str(intention.get("id", "seed"))],
+		"intent": "visit_place",
+		"target_place_id": location_id,
+		"reason": str(intention.get("label", default_todo.get("reasonTemplate", ""))),
+		"priority": 50,
+		"status": "pending",
+	})]
+	assign_daily_wellbeing_problem()
+
+
+func _default_seed_todo(npc, config: Dictionary):
+	var values := {
+		"npc_id": str(npc.id),
+		"npc_name": str(npc.name),
+	}
+	return TodoItemScript.from_dict({
+		"id": _format_template(str(config.get("idTemplate", "todo_{npc_id}_seed")), values),
+		"intent": str(config.get("intent", "wander")),
+		"reason": _format_template(str(config.get("reasonTemplate", "")), values),
+		"priority": int(config.get("priority", 10)),
+		"status": str(config.get("status", "pending")),
+	})
 
 
 func _tile_from_array(value: Variant) -> Vector2i:
@@ -1507,14 +2291,6 @@ func _tags_text(value: Variant) -> String:
 	for entry in value:
 		parts.append(str(entry))
 	return ", ".join(parts)
-
-
-func _fallback_stardive_npcs() -> Array:
-	return [
-		{"id": "trump", "name": "特朗普", "tile_x": 16, "tile_y": 8, "traits": {"tell": 78, "face": 86, "control": 88, "caution": 44, "play": 72}, "tags": ["authority"], "style": {"lineMode": "over_denial"}, "animSetId": "trump"},
-		{"id": "jiu_tong", "name": "九筒", "tile_x": 13, "tile_y": 14, "traits": {"tell": 42, "face": 65, "control": 52, "caution": 82, "play": 36}, "tags": ["debt_avoidant"], "style": {"lineMode": "strategic_observer"}, "animSetId": "jiu_tong"},
-		{"id": "shi_ye", "name": "师爷", "tile_x": 14, "tile_y": 13, "traits": {"tell": 66, "face": 78, "control": 74, "caution": 70, "play": 92}, "tags": ["bureaucratic"], "style": {"lineMode": "bureaucratic_rename"}, "animSetId": "shi_ye"},
-	]
 
 
 func _wire_ui_nodes() -> void:
@@ -1549,6 +2325,13 @@ func _wire_ui_nodes() -> void:
 	schedule_sidebar = ui_layer.get_node_or_null("ScheduleSidebar")
 
 	clock_label = ui_layer.get_node_or_null("ClockLabel")
+
+	npc_chat_panel = ui_layer.get_node_or_null("NPCChatPanel")
+	if npc_chat_panel != null:
+		if npc_chat_panel.has_method("configure_npcs"):
+			npc_chat_panel.configure_npcs(entity_registry.npcs, selected_entity_id)
+		if npc_chat_panel.has_signal("message_submitted"):
+			npc_chat_panel.message_submitted.connect(submit_npc_chat_message)
 
 
 func _update_feedback_text(message: String) -> void:

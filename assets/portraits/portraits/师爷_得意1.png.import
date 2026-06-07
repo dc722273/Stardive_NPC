@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bqss78poek46g"
-path="res://.godot/imported/师爷_得意1.png-517532fcca279e87bda42e4b8b4377f2.ctex"
+path="res://.godot/imported/师爷_得意1.png-6f8f4550cd2d8783de3400ac17bb16c4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/师爷_得意1.png"
-dest_files=["res://.godot/imported/师爷_得意1.png-517532fcca279e87bda42e4b8b4377f2.ctex"]
+source_file="res://assets/portraits/portraits/师爷_得意1.png"
+dest_files=["res://.godot/imported/师爷_得意1.png-6f8f4550cd2d8783de3400ac17bb16c4.ctex"]
 
 [params]
 

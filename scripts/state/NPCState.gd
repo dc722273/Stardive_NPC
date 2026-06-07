@@ -22,17 +22,33 @@ const DEFAULT_STYLE := {
 	"lineMode": "strategic_observer",
 }
 
+const DEFAULT_PREFERENCE := {
+	"classificationAffinity": {},
+	"socialAffinity": {},
+	"tolerance": {
+		"danger": 50,
+		"debt": 50,
+		"awkward": 50,
+		"repetition": 50,
+	},
+}
+
 var id: StringName = &""
 var name: String = ""
 var traits: Dictionary = DEFAULT_TRAITS.duplicate(true)
 var tags: Array = []
+var aliases: Array = []
+var body_gags: Array = []
 var style: Dictionary = DEFAULT_STYLE.duplicate(true)
+var preference: Dictionary = DEFAULT_PREFERENCE.duplicate(true)
+var visual: Dictionary = {}
 var anim_set_id: String = ""
 
 var performance_state: String = "idle"
 var emotional_state: String = "neutral"
 var stance_to_object: Dictionary = {}
 var current_gag: Dictionary = {}
+var wellbeing: Dictionary = {}
 var cooldowns: Dictionary = {
 	"lastMicroActionId": "",
 	"lastLineMode": "",
@@ -51,7 +67,11 @@ static func from_dict(data: Dictionary):
 	state.name = str(data.get("name", state.id))
 	state.traits = _merge_dict(DEFAULT_TRAITS, data.get("traits", {}))
 	state.tags = _array_from(data.get("tags", []))
+	state.aliases = _array_from(data.get("aliases", []))
+	state.body_gags = _array_from(data.get("bodyGags", data.get("body_gags", [])))
 	state.style = _merge_dict(DEFAULT_STYLE, data.get("style", {}))
+	state.preference = _merge_dict(DEFAULT_PREFERENCE, data.get("preference", {}))
+	state.visual = _dict_from(data.get("visual", {}))
 	state.anim_set_id = str(data.get("animSetId", data.get("anim_set_id", state.id)))
 
 	var runtime: Dictionary = _dict_from(data.get("runtime", data.get("runtimeState", {})))
@@ -59,6 +79,7 @@ static func from_dict(data: Dictionary):
 	state.emotional_state = str(runtime.get("emotionalState", runtime.get("emotional_state", "neutral")))
 	state.stance_to_object = _dict_from(runtime.get("stanceToObject", runtime.get("stance_to_object", {})))
 	state.current_gag = _dict_from(runtime.get("currentGag", runtime.get("current_gag", {})))
+	state.wellbeing = _dict_from(runtime.get("wellbeing", {}))
 	state.cooldowns = _merge_dict(state.cooldowns, runtime.get("cooldowns", {}))
 
 	if data.has("position"):
@@ -94,7 +115,11 @@ func profile_dict() -> Dictionary:
 		"name": name,
 		"traits": traits.duplicate(true),
 		"tags": tags.duplicate(true),
+		"aliases": aliases.duplicate(true),
+		"bodyGags": body_gags.duplicate(true),
 		"style": style.duplicate(true),
+		"preference": preference.duplicate(true),
+		"visual": visual.duplicate(true),
 		"animSetId": anim_set_id,
 	}
 
@@ -110,6 +135,8 @@ func runtime_dict() -> Dictionary:
 		result["stanceToObject"] = stance_to_object.duplicate(true)
 	if not current_gag.is_empty():
 		result["currentGag"] = current_gag.duplicate(true)
+	if not wellbeing.is_empty():
+		result["wellbeing"] = wellbeing.duplicate(true)
 	return result
 
 
@@ -151,5 +178,8 @@ static func _merge_dict(base: Dictionary, override: Variant) -> Dictionary:
 	var result := base.duplicate(true)
 	if override is Dictionary:
 		for key in override.keys():
-			result[key] = override[key]
+			if result.get(key) is Dictionary and override[key] is Dictionary:
+				result[key] = _merge_dict(result[key], override[key])
+			else:
+				result[key] = override[key]
 	return result

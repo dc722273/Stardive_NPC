@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c721mjti3dap5"
-path="res://.godot/imported/特朗普_强装镇定1.png-28bb10ab6b5859c768304e42d16cfde3.ctex"
+path="res://.godot/imported/特朗普_强装镇定1.png-a0f2e32b8195ae05fdf84b2c01a3b3e0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/特朗普_强装镇定1.png"
-dest_files=["res://.godot/imported/特朗普_强装镇定1.png-28bb10ab6b5859c768304e42d16cfde3.ctex"]
+source_file="res://assets/portraits/portraits/特朗普_强装镇定1.png"
+dest_files=["res://.godot/imported/特朗普_强装镇定1.png-a0f2e32b8195ae05fdf84b2c01a3b3e0.ctex"]
 
 [params]
 

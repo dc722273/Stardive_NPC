@@ -22,6 +22,8 @@ func run() -> Array:
 	_test_auto_drop_feedback_mentions_ground_action(failures)
 	_test_transfer_feedback_changes_with_repetition_stage(failures)
 	_test_feedback_prompt_requires_repetition_performance(failures)
+	_test_feedback_prompt_includes_npc_remembered_history(failures)
+	_test_transfer_feedback_surfaces_relation_warmth(failures)
 	_test_transfer_feedback_distinguishes_previous_and_target(failures)
 	_test_set_transport_does_not_break_existing_configure(failures)
 	return failures
@@ -131,13 +133,13 @@ func _test_drop_on_npc_feedback_changes_with_repetition_stage(failures: Array) -
 	var builder = NPCFeedbackBuilderScript.new()
 	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
 	var payload := {
-		"item_name": "川普专属健怡可乐",
+		"item_name": "健怡可乐",
 		"interaction_trace": {"countInWindow": 3, "stage": "noticed", "heat": 139},
 		"performance_plan": {"pattern": "preemptive_gag"},
 	}
 	var event = world["event_log"].record(&"player_drop_item_on_npc", &"diet_coke", &"npc_alpha", &"npc", Vector2i(5, 5), payload)
 	var feedback: Dictionary = builder.build_feedback(event, world["npc"], world)
-	_assert_equal(str(feedback.get("text", "")).find("抢在别人开口前") >= 0, true, "third repeated drop uses preemptive gag fallback", failures)
+	_assert_equal(str(feedback.get("text", "")).find("抢在别人开口前") >= 0, true, "accumulated drop pressure uses preemptive gag fallback", failures)
 
 
 func _test_auto_drop_feedback_mentions_ground_action(failures: Array) -> void:
@@ -145,7 +147,7 @@ func _test_auto_drop_feedback_mentions_ground_action(failures: Array) -> void:
 	var builder = NPCFeedbackBuilderScript.new()
 	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
 	var payload := {
-		"item_name": "川普专属健怡可乐",
+		"item_name": "健怡可乐",
 		"item_target_id": "npc_alpha",
 		"interaction_trace": {"countInWindow": 3, "stage": "noticed", "heat": 139},
 		"performance_plan": {"pattern": "preemptive_gag"},
@@ -171,7 +173,7 @@ func _test_transfer_feedback_changes_with_repetition_stage(failures: Array) -> v
 	}
 	var event = world["event_log"].record(&"player_transfer_item_between_npcs", &"item_gun", &"npc_beta", &"npc", Vector2i(5, 5), payload)
 	var target_feedback: Dictionary = builder.build_feedback(event, world["npc_beta"], world)
-	_assert_equal(str(target_feedback.get("text", "")).find("又来") >= 0, true, "fourth transfer uses gag callback fallback", failures)
+	_assert_equal(str(target_feedback.get("text", "")).find("又来") >= 0, true, "deeply familiar transfer pressure uses callback fallback", failures)
 
 
 func _test_feedback_prompt_requires_repetition_performance(failures: Array) -> void:
@@ -189,11 +191,58 @@ func _test_feedback_prompt_requires_repetition_performance(failures: Array) -> v
 	var combined := ""
 	for message in messages:
 		combined += str(message.get("content", ""))
-	_assert_equal(combined.contains("countInWindow 大于 1"), true, "feedback prompt requires visible repetition handling", failures)
-	_assert_equal(combined.contains("这是第2次"), true, "feedback prompt includes concrete repetition count", failures)
-	_assert_equal(combined.contains("pattern=leak_cover"), true, "feedback prompt includes concrete performance pattern", failures)
+	_assert_equal(combined.contains("interaction memory"), true, "feedback prompt includes accumulated interaction memory", failures)
+	_assert_equal(combined.contains("关系压力"), true, "feedback prompt summarizes repetition as relationship pressure", failures)
+	_assert_equal(combined.contains("countInWindow"), false, "feedback prompt does not expose internal repetition counter", failures)
+	_assert_equal(combined.contains("pattern=leak_cover"), false, "feedback prompt does not expose internal performance pattern", failures)
+	_assert_equal(combined.contains('"pattern"'), false, "feedback prompt does not include raw performance plan JSON", failures)
 	_assert_equal(combined.contains("expression palette"), true, "feedback prompt asks for varied expression focus instead of one repeated metaphor", failures)
 	_assert_equal(combined.contains("手部动作、面子、账、嫌疑、归属、旁观目光"), true, "feedback prompt provides varied expression focus set", failures)
+
+
+func _test_feedback_prompt_includes_npc_remembered_history(failures: Array) -> void:
+	var world := _make_world()
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
+	var npc = world["npc"]
+	var remembered_chat = world["event_log"].record(&"player_chat_to_npc", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"player_message": "刚才那瓶可乐是九筒给你的"})
+	var remembered_reply = world["event_log"].record(&"npc_feedback_line", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"speakerName": "npc_alpha", "text": "我先记着这笔账。"}, &"npc_alpha")
+	npc.recent_events.append(remembered_chat)
+	npc.recent_events.append(remembered_reply)
+	world["entity_registry"].apply_relation_delta(&"npc_alpha", &"npc_beta", {"attention": 4, "warmth": 0, "awkward": 5, "suspicion": 0, "debt": 4, "fun": 0}, "gift_pressure", 12)
+	var current_event = world["event_log"].record(&"player_chat_to_npc", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"player_message": "你还记得刚才吗？"})
+	var feedback: Dictionary = builder.build_feedback(current_event, npc, world)
+	var messages: Array = builder._build_feedback_messages(feedback, current_event, npc)
+	var combined := ""
+	for message in messages:
+		combined += str(message.get("content", ""))
+	_assert_equal(combined.contains("npc remembered history"), true, "feedback prompt includes standing NPC memory", failures)
+	_assert_equal(combined.contains("刚才那瓶可乐是九筒给你的"), true, "feedback prompt recalls previous player speech", failures)
+	_assert_equal(combined.contains("我先记着这笔账"), true, "feedback prompt recalls previous NPC reply", failures)
+	_assert_equal(combined.contains("有尴尬"), true, "feedback prompt summarizes standing relation memory", failures)
+	_assert_equal(combined.find("玩家之前对他说过：“你还记得刚才吗？”") < 0, true, "feedback prompt does not mislabel current message as old memory", failures)
+	_assert_equal(combined.contains("sourceEventId"), false, "feedback prompt does not expose internal reply source id", failures)
+
+
+func _test_transfer_feedback_surfaces_relation_warmth(failures: Array) -> void:
+	var world := _make_world()
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
+	var payload := {
+		"item_name": "金杯",
+		"previousAnchorNpcId": "npc_alpha",
+		"previousAnchorNpcName": "Alpha",
+		"item_target_id": "npc_beta",
+		"item_target_name": "Beta",
+		"relation_memory_updates": [
+			{"fromNpcId": "npc_beta", "toNpcId": "npc_alpha", "attention": 4, "warmth": 6, "awkward": 0, "suspicion": 0, "debt": 3, "fun": 0}
+		],
+	}
+	var event = world["event_log"].record(&"player_transfer_item_between_npcs", &"gold_cup", &"npc_beta", &"npc", Vector2i(5, 5), payload)
+	var feedback: Dictionary = builder.build_feedback(event, world["npc_beta"], world)
+	var text := str(feedback.get("text", ""))
+	_assert_equal(text.contains("眼神比刚才软"), true, "transfer fallback makes warmth shift visible", failures)
+	_assert_equal(text.contains("欠了Alpha一点"), true, "transfer fallback makes relationship debt visible", failures)
 
 
 func _test_transfer_feedback_distinguishes_previous_and_target(failures: Array) -> void:

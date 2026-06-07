@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b21kiddavb0aq"
-path="res://.godot/imported/九筒_激动1.png-2d658d686f1874143415dce0064b3393.ctex"
+path="res://.godot/imported/九筒_激动1.png-c8756a86b92fa29e20f0e1c37453b689.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/九筒_激动1.png"
-dest_files=["res://.godot/imported/九筒_激动1.png-2d658d686f1874143415dce0064b3393.ctex"]
+source_file="res://assets/portraits/portraits/九筒_激动1.png"
+dest_files=["res://.godot/imported/九筒_激动1.png-c8756a86b92fa29e20f0e1c37453b689.ctex"]
 
 [params]
 

@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b1be37p7bxchf"
-path="res://.godot/imported/城门口.png-531a8392ccefa9f93a896d28b9ddba1d.ctex"
+path="res://.godot/imported/城门口.png-0456f6a6d884deb269186c72b583b183.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/bg/城门口.png"
-dest_files=["res://.godot/imported/城门口.png-531a8392ccefa9f93a896d28b9ddba1d.ctex"]
+source_file="res://assets/bg/bg/城门口.png"
+dest_files=["res://.godot/imported/城门口.png-0456f6a6d884deb269186c72b583b183.ctex"]
 
 [params]
 

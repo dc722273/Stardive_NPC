@@ -22,6 +22,21 @@ static func load_gameplay_config() -> Dictionary:
 	return data if data is Dictionary else {}
 
 
+static func load_feedback_config() -> Dictionary:
+	var data = load_json_file("res://config/feedback.json", {})
+	return data if data is Dictionary else {}
+
+
+static func load_planner_config() -> Dictionary:
+	var data = load_json_file("res://config/planner.json", {})
+	return data if data is Dictionary else {}
+
+
+static func load_wellbeing_config() -> Dictionary:
+	var data = load_json_file("res://config/wellbeing.json", {})
+	return data if data is Dictionary else {}
+
+
 static func load_item_configs() -> Array:
 	var bundle := load_item_bundle()
 	return bundle.get("objects", [])

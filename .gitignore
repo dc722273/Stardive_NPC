@@ -1,6 +1,7 @@
 .godot/
 .godot-user/
 .godot-test.log
+.run/
 .import/
 .superpowers/
 .worktrees/

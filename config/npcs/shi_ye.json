@@ -1,6 +1,9 @@
 {
   "id": "shi_ye",
   "name": "师爷",
+  "visual": {
+    "markerPath": "res://assets/map_markers/师爷小球.png"
+  },
   "tile_x": 14,
   "tile_y": 13,
   "traits": {
@@ -11,6 +14,88 @@
     "play": 92
   },
   "tags": ["bureaucratic", "gossip", "avoid_responsibility", "ledger_brain"],
+  "bodyGags": [
+    {
+      "id": "hands_off_weapon",
+      "label": "小人没碰",
+      "match": {
+        "classificationKeys": ["weapon", "weapon.handgun"],
+        "reasons": ["danger", "power", "forbidden"]
+      },
+      "action": "hold_up_hands",
+      "preemptiveLine": "别贴小人。"
+    },
+    {
+      "id": "receipt_cover",
+      "label": "只是确认站稳",
+      "match": {
+        "classificationKeys": ["valuable", "valuable.cup"],
+        "reasons": ["status", "debt"]
+      },
+      "action": "reach_then_stop",
+      "preemptiveLine": "小人只是看看它站没站稳。"
+    },
+    {
+      "id": "ledger_reflex",
+      "label": "先记一笔",
+      "match": {
+        "classificationKeys": ["document.ledger"],
+        "reasons": ["power", "utility", "joke"]
+      },
+      "action": "open_notebook",
+      "preemptiveLine": "小人先把名目写清。"
+    },
+    {
+      "id": "cash_cover",
+      "label": "不是收受",
+      "match": {
+        "classificationKeys": ["cash", "cash.dollars"],
+        "reasons": ["debt", "awkward", "status"]
+      },
+      "action": "hide_behind_notebook",
+      "preemptiveLine": "这不叫收，只叫过目。"
+    },
+    {
+      "id": "seal_rules",
+      "label": "按规矩封上",
+      "match": {
+        "classificationKeys": ["document.seal"],
+        "reasons": ["power", "awkward", "joke"]
+      },
+      "action": "snap_notebook_close",
+      "preemptiveLine": "先封住名分，再说别的。"
+    }
+  ],
+  "preference": {
+    "classificationAffinity": {
+      "document": 26,
+      "document.ledger": 34,
+      "document.seal": 24,
+      "weapon": -12,
+      "weapon.handgun": -24,
+      "drink": 4,
+      "drink.soda": -6,
+      "valuable": 10,
+      "valuable.cup": 18,
+      "cash": 8,
+      "cash.dollars": 12
+    },
+    "socialAffinity": {
+      "status": 18,
+      "power": 8,
+      "utility": 10,
+      "debt": 16,
+      "awkward": 20,
+      "joke": 28,
+      "danger": -24
+    },
+    "tolerance": {
+      "danger": 30,
+      "debt": 62,
+      "awkward": 76,
+      "repetition": 88
+    }
+  },
   "style": {
     "leakActions": ["eyes_widen", "hand_freeze", "pen_lift"],
     "coverActions": ["open_notebook", "fake_cough", "hide_behind_notebook"],

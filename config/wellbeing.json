@@ -1,0 +1,202 @@
+{
+  "candidateNpcIds": ["trump", "jiu_tong", "shi_ye"],
+  "problemRotation": ["stressed", "lonely", "lost_face", "afraid", "bored"],
+  "defaultState": "normal",
+  "activeStates": ["down", "worse"],
+  "resolvedStates": ["better"],
+  "problems": {
+    "stressed": {
+      "iconText": "!!",
+      "effect": "shake",
+      "judgementRules": [
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [{"source": "object_social", "field": "danger", "gte": 70}],
+          "result": "harm",
+          "nextNpcState": "worse",
+          "reason": "danger_added"
+        },
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [
+            {"source": "classification", "field": "subtype", "in": ["ledger", "seal"]},
+            {"source": "object_social", "field": "utility", "gte": 60},
+            {"source": "object_social", "field": "power", "gte": 60}
+          ],
+          "result": "help",
+          "nextNpcState": "better",
+          "reason": "matched_need"
+        },
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [{"source": "object_social", "field": "utility", "gte": 70}],
+          "result": "help",
+          "nextNpcState": "better",
+          "reason": "matched_need"
+        }
+      ]
+    },
+    "lonely": {
+      "iconText": "○",
+      "effect": "dim",
+      "judgementRules": [
+        {
+          "eventTypes": ["player_drop_npc_near_npc"],
+          "conditions": [],
+          "result": "help",
+          "nextNpcState": "better",
+          "reason": "companionship_added"
+        }
+      ]
+    },
+    "lost_face": {
+      "iconText": "!",
+      "effect": "pulse",
+      "judgementRules": [
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [
+            {"source": "object_social", "field": "status", "gte": 70},
+            {"source": "object_social", "field": "danger", "lte": 20}
+          ],
+          "result": "help",
+          "nextNpcState": "better",
+          "reason": "status_restored"
+        },
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [{"source": "object_social", "field": "awkward", "gte": 85}],
+          "result": "harm",
+          "nextNpcState": "worse",
+          "reason": "pressure_added"
+        }
+      ]
+    },
+    "afraid": {
+      "iconText": "?",
+      "effect": "shake",
+      "judgementRules": [
+        {
+          "eventTypes": ["player_forced_drop_item"],
+          "conditions": [{"source": "object_social", "field": "danger", "gte": 70}],
+          "result": "help",
+          "nextNpcState": "better",
+          "reason": "danger_removed"
+        },
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [
+            {"source": "object_social", "field": "danger", "gte": 70},
+            {"source": "item", "field": "owner_id", "equalsTargetNpc": true}
+          ],
+          "result": "help",
+          "nextNpcState": "better",
+          "reason": "danger_removed"
+        },
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [{"source": "object_social", "field": "danger", "gte": 70}],
+          "result": "harm",
+          "nextNpcState": "worse",
+          "reason": "danger_added"
+        }
+      ]
+    },
+    "bored": {
+      "iconText": "...",
+      "effect": "dim",
+      "judgementRules": [
+        {
+          "eventTypes": ["player_drop_item_on_npc", "player_transfer_item_between_npcs", "player_drop_npc_near_item", "player_chat_reported_item_transfer"],
+          "conditions": [{"source": "object_social", "field": "joke", "gte": 70}],
+          "result": "help",
+          "nextNpcState": "better",
+          "reason": "boredom_relieved"
+        }
+      ]
+    }
+  },
+  "defaultJudgement": {
+    "result": "neutral",
+    "nextNpcState": "down",
+    "reason": "unmatched_need"
+  },
+  "feedbackTags": {
+    "help": "状态改善",
+    "harm": "添乱",
+    "neutral": "未命中需求"
+  },
+  "performance": {
+    "prompt": {
+      "systemTemplate": "你是一个 2D 社交喜剧游戏的表演导演。游戏结果已经由规则系统锁定，你只能选择动作、表情和短台词来表现这个结果。你会看到完整 actionCatalog 和 expressionCatalog；必须返回库中存在的 actionId / expressionId，不能创造新 id，不能改变 NPC 状态、物品归属、关系数值或城市数值。输出 JSON，格式为 {\"pattern\":<positive_recovery|negative_reaction|neutral_reaction>,\"steps\":[{\"channel\":<body|face|gaze|speech|silence|icon>,\"actionId\"?:<id>,\"expressionId\"?:<id>,\"line\"?:<short Chinese line>,\"delayMs\":<int>}]}",
+      "userTemplate": "lockedResult: {result}\nlockedReason: {reason}\nnpc: {npc}\nproblem: {problem}\nobject: {object}\nnpcStyle: {npc_style}\nactionCatalog: {action_catalog}\nexpressionCatalog: {expression_catalog}\n要求：自由选择最合适的库内动作和表情；优先贴合 npcStyle，但可以从全库挑选更合适的 id；动作/表情合计 2-5 个；台词最多 2 句；如果 result=help，表现状态缓和；如果 result=harm，表现状态更糟；如果 result=neutral，表现轻微反应。"
+    },
+    "patterns": {
+      "help": "positive_recovery",
+      "harm": "negative_reaction",
+      "neutral": "neutral_reaction"
+    },
+    "fallbackLine": {
+      "help": "这一下倒是把劲儿接上了。",
+      "harm": "这下更说不清了。",
+      "neutral": "这事没对上他的劲儿。"
+    },
+    "fallbackActions": {
+      "help": ["straighten_clothes", "look_away"],
+      "harm": ["step_back", "hold_up_hands", "body_stiff"],
+      "neutral": ["glance_object", "awkward_silence"]
+    },
+    "fallbackExpressions": {
+      "help": ["relieved", "smug", "awkward"],
+      "harm": ["defensive", "nervous", "awkward"],
+      "neutral": ["flat", "awkward"]
+    },
+    "styleActionFields": {
+      "help": ["coverActions", "wantActions"],
+      "harm": ["rejectActions"],
+      "neutral": ["observeActions"]
+    }
+  },
+  "actionCatalog": {
+    "glance_object": {"label": "看向物品", "text": "看向那件东西", "tags": ["gaze", "object"], "channels": ["gaze"]},
+    "eyes_widen": {"label": "睁大眼", "text": "眼睛一下睁大", "tags": ["surprise", "fear"], "channels": ["face"]},
+    "hand_freeze": {"label": "手僵住", "text": "手在半空僵住", "tags": ["hesitate", "awkward"], "channels": ["body"]},
+    "step_back": {"label": "后退", "text": "往后退开半步", "tags": ["avoid", "fear"], "channels": ["body"]},
+    "hold_up_hands": {"label": "举手撇清", "text": "双手立刻举起来", "tags": ["defensive", "deny", "avoid_responsibility"], "channels": ["body"]},
+    "look_away": {"label": "移开视线", "text": "把视线挪开", "tags": ["cover", "awkward"], "channels": ["gaze"]},
+    "straighten_clothes": {"label": "整理衣服", "text": "把衣服整理了一下", "tags": ["status", "recover"], "channels": ["body"]},
+    "reach_then_stop": {"label": "伸手又停", "text": "手伸出去又停住", "tags": ["want", "cover"], "channels": ["body"]},
+    "push_object_back": {"label": "推回物品", "text": "把东西往外推", "tags": ["reject", "avoid"], "channels": ["body"]},
+    "awkward_silence": {"label": "尴尬沉默", "text": "沉默了一拍", "tags": ["awkward", "silence"], "channels": ["silence"]},
+    "body_stiff": {"label": "身体僵硬", "text": "整个人绷住", "tags": ["fear", "pressure"], "channels": ["body"]},
+    "fake_cough": {"label": "假咳遮掩", "text": "假咳一声遮过去", "tags": ["cover", "face"], "channels": ["body"]},
+    "snap_notebook_close": {"label": "合上账本", "text": "啪地合上账本", "tags": ["deny", "cover"], "channels": ["body"]},
+    "open_notebook": {"label": "翻开账本", "text": "翻开账本准备记一笔", "tags": ["ledger", "cover"], "channels": ["body"]},
+    "look_between": {"label": "来回看", "text": "在两人之间来回看", "tags": ["observe", "suspicion"], "channels": ["gaze"]},
+    "eyebrow_raise": {"label": "挑眉", "text": "眉毛轻轻一挑", "tags": ["observe", "roast"], "channels": ["face"]},
+    "deadpan": {"label": "面无表情", "text": "脸上没什么表情", "tags": ["cover", "dry"], "channels": ["face"]},
+    "straighten_sleeve": {"label": "整袖口", "text": "低头整理袖口", "tags": ["cover", "status"], "channels": ["body"]},
+    "glance_target": {"label": "看向对方", "text": "瞥了对方一眼", "tags": ["relation", "suspicion"], "channels": ["gaze"]},
+    "fake_serious": {"label": "假装严肃", "text": "摆出一副严肃表情", "tags": ["cover", "status"], "channels": ["face"]},
+    "hover_hand": {"label": "手悬住", "text": "手悬在东西旁边", "tags": ["want", "hesitate"], "channels": ["body"]},
+    "tap_stop": {"label": "敲击停住", "text": "手指敲到一半停住", "tags": ["tell", "cover"], "channels": ["body"]},
+    "blush": {"label": "脸色一热", "text": "脸色微微一热", "tags": ["leak", "awkward"], "channels": ["face"]},
+    "pen_lift": {"label": "笔尖抬起", "text": "笔尖从纸上抬起来", "tags": ["ledger", "observe"], "channels": ["body"]},
+    "write_too_fast": {"label": "写得过快", "text": "下笔快得有点心虚", "tags": ["want", "cover"], "channels": ["body"]},
+    "hide_behind_notebook": {"label": "账本遮脸", "text": "用账本挡了半张脸", "tags": ["cover", "awkward"], "channels": ["body"]},
+    "blink_twice": {"label": "眨眼两下", "text": "很慢地眨了两下眼", "tags": ["tell", "dry"], "channels": ["face"]},
+    "avoid_eye_contact": {"label": "避开目光", "text": "避开了对方的目光", "tags": ["avoid", "cover"], "channels": ["gaze"]},
+    "stare_object": {"label": "盯住物品", "text": "盯着那件东西看", "tags": ["want", "object"], "channels": ["gaze"]},
+    "look_around": {"label": "环顾四周", "text": "先看了一圈周围", "tags": ["caution", "cover"], "channels": ["gaze"]}
+  },
+  "expressionCatalog": {
+    "nervous": {"label": "紧张", "text": "脸色绷住", "tags": ["fear", "pressure"]},
+    "defensive": {"label": "防御", "text": "表情立刻进入撇清状态", "tags": ["deny", "avoid_responsibility"]},
+    "awkward": {"label": "尴尬", "text": "表情卡了一下", "tags": ["awkward"]},
+    "relieved": {"label": "缓和", "text": "肩膀松下来一点", "tags": ["recover", "help"]},
+    "smug": {"label": "体面恢复", "text": "脸上重新挂住体面", "tags": ["status", "recover"]},
+    "bored": {"label": "无聊", "text": "神情有点散", "tags": ["bored"]},
+    "amused": {"label": "觉得有趣", "text": "眼神里有点乐子", "tags": ["joke", "fun"]},
+    "flat": {"label": "平淡", "text": "表情没怎么动", "tags": ["neutral"]}
+  }
+}

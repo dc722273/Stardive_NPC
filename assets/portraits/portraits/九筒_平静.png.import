@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dms6pxkd7em1j"
-path="res://.godot/imported/九筒_平静.png-60b4f8d529a9051fec30c65e7cc7a8d8.ctex"
+path="res://.godot/imported/九筒_平静.png-a1c2f16e7e80fe25323adfa7fe6ada84.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/九筒_平静.png"
-dest_files=["res://.godot/imported/九筒_平静.png-60b4f8d529a9051fec30c65e7cc7a8d8.ctex"]
+source_file="res://assets/portraits/portraits/九筒_平静.png"
+dest_files=["res://.godot/imported/九筒_平静.png-a1c2f16e7e80fe25323adfa7fe6ada84.ctex"]
 
 [params]
 

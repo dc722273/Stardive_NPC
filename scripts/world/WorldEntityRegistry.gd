@@ -13,6 +13,13 @@ var interaction_traces: Dictionary = {}
 var map_bounds: Rect2i = Rect2i()
 var blocked_cells: Dictionary = {}
 var repair_warnings: Array = []
+var interaction_stage_thresholds: Dictionary = {
+	"new": 0,
+	"repeated": 35,
+	"noticed": 70,
+	"gagged": 105,
+	"ritualized": 140,
+}
 
 
 func set_map_bounds(bounds: Rect2i) -> void:
@@ -21,6 +28,13 @@ func set_map_bounds(bounds: Rect2i) -> void:
 
 func set_object_types(types: Dictionary) -> void:
 	object_types = types.duplicate(true)
+
+
+func set_interaction_stage_thresholds(thresholds: Dictionary) -> void:
+	if thresholds.is_empty():
+		return
+	for key in thresholds.keys():
+		interaction_stage_thresholds[str(key)] = int(thresholds[key])
 
 
 func set_blocked_cell(cell: Vector2i, blocked: bool = true) -> void:
@@ -46,13 +60,14 @@ func apply_relation_delta(from_npc_id: StringName, to_npc_id: StringName, delta:
 		"fromNpcId": str(from_npc_id),
 		"toNpcId": str(to_npc_id),
 		"attention": 0,
+		"warmth": 0,
 		"awkward": 0,
 		"suspicion": 0,
 		"debt": 0,
 		"fun": 0,
 		"tags": [],
 	})
-	for field in ["attention", "awkward", "suspicion", "debt", "fun"]:
+	for field in ["attention", "warmth", "awkward", "suspicion", "debt", "fun"]:
 		memory[field] = clampi(int(memory.get(field, 0)) + int(delta.get(field, 0)), 0, 100)
 	if not tag.is_empty():
 		_upsert_relation_tag(memory, tag, int(delta.get("fun", 1)) + int(delta.get("attention", 1)), current_tick)
@@ -68,6 +83,7 @@ func update_interaction_trace(event_type: String, object_id: StringName, target_
 	if object_id == &"" or target_npc_id == &"":
 		return {}
 	var key := _interaction_trace_key(event_type, object_id, target_npc_id)
+	var had_existing := interaction_traces.has(key)
 	var trace: Dictionary = interaction_traces.get(key, {
 		"key": key,
 		"eventType": event_type,
@@ -82,7 +98,10 @@ func update_interaction_trace(event_type: String, object_id: StringName, target_
 	trace["countInWindow"] = int(trace.get("countInWindow", 0)) + 1
 	trace["lastSeenAt"] = current_tick
 	trace["heat"] = int(round(float(trace.get("heat", 0)) * heat_decay + float(heat_delta)))
-	trace["stage"] = _trace_stage_by_count(int(trace["countInWindow"]))
+	if had_existing:
+		trace["stage"] = _advance_stage_by_one(str(trace.get("stage", "new")), _trace_stage_by_heat(int(trace["heat"])))
+	else:
+		trace["stage"] = "new"
 	interaction_traces[key] = trace
 	return trace.duplicate(true)
 
@@ -205,14 +224,32 @@ func drop_anchored_items(npc_id: StringName, event_log = null) -> bool:
 	if anchored_items.is_empty():
 		return false
 
-	var holder_pos: Vector2 = npcs[npc_id].position
 	for index in range(anchored_items.size()):
-		var item_id: StringName = anchored_items[index]
-		var item = items[item_id]
-		var target_pos: Vector2 = holder_pos + Vector2(ConstantsScript.CELL_SIZE * 0.72 + 18.0 * float(index), ConstantsScript.CELL_SIZE * 0.66 + 10.0 * float(index))
-		item.attach_to_ground(_resolve_walkable_position(target_pos), "unclaimed")
-		if event_log != null and event_log.has_method("record"):
-			event_log.record(&"player_forced_drop_item", item_id, npc_id, &"npc", item.current_cell)
+		drop_anchored_item(npc_id, anchored_items[index], event_log, index)
+	return true
+
+
+func drop_anchored_item(npc_id: StringName, item_id: StringName, event_log = null, offset_index: int = 0, actor_id: StringName = &"player") -> bool:
+	if not npcs.has(npc_id) or not items.has(item_id):
+		return false
+	var item = items[item_id]
+	if item.anchor_npc_id() != npc_id:
+		return false
+	var holder_pos: Vector2 = npcs[npc_id].position
+	var target_pos: Vector2 = holder_pos + Vector2(ConstantsScript.CELL_SIZE * 0.72 + 18.0 * float(offset_index), ConstantsScript.CELL_SIZE * 0.66 + 10.0 * float(offset_index))
+	item.attach_to_ground(_resolve_walkable_position(target_pos), "unclaimed")
+	if event_log != null and event_log.has_method("record"):
+		event_log.record(&"player_forced_drop_item", item_id, npc_id, &"npc", item.current_cell, {
+			"source": "player_remove_object_from_npc",
+			"npc_ids": [npc_id],
+			"primary_npc_ids": [npc_id],
+			"item_id": item_id,
+			"item_name": item.name,
+			"item_target_id": npc_id,
+			"item_target_name": npcs[npc_id].name,
+			"currentAnchor": {"type": "ground"},
+			"object_social": item.social.duplicate(true),
+		}, actor_id)
 	return true
 
 
@@ -280,6 +317,8 @@ func load_from_dict(data: Dictionary) -> void:
 				var from_id := StringName(value.get("fromNpcId", ""))
 				var to_id := StringName(value.get("toNpcId", ""))
 				if from_id != &"" and to_id != &"":
+					if not value.has("warmth"):
+						value["warmth"] = 0
 					relation_memories[_relation_key(from_id, to_id)] = value.duplicate(true)
 
 	var raw_traces: Variant = data.get("interaction_traces", data.get("traces", []))
@@ -364,16 +403,24 @@ func _interaction_trace_key(event_type: String, object_id: StringName, target_np
 	return "%s:%s:%s" % [event_type, str(object_id), str(target_npc_id)]
 
 
-func _trace_stage_by_count(count: int) -> String:
-	if count <= 1:
-		return "new"
-	if count == 2:
-		return "repeated"
-	if count == 3:
-		return "noticed"
-	if count == 4:
-		return "gagged"
-	return "ritualized"
+func _trace_stage_by_heat(heat: int) -> String:
+	var stage := "new"
+	for candidate in ["ritualized", "gagged", "noticed", "repeated", "new"]:
+		if heat >= int(interaction_stage_thresholds.get(candidate, 0)):
+			stage = candidate
+			break
+	return stage
+
+
+func _advance_stage_by_one(current: String, target: String) -> String:
+	var order := ["new", "repeated", "noticed", "gagged", "ritualized"]
+	var current_index := order.find(current)
+	var target_index := order.find(target)
+	if current_index < 0:
+		current_index = 0
+	if target_index < 0:
+		target_index = 0
+	return order[min(current_index + 1, target_index)]
 
 
 func _upsert_relation_tag(memory: Dictionary, tag: String, strength_delta: int, current_tick: int) -> void:

@@ -2,6 +2,7 @@ extends RefCounted
 class_name DailyTodoPlanner
 
 const TodoItemScript := preload("res://scripts/state/TodoItem.gd")
+const ConfigLoaderScript := preload("res://scripts/config/ConfigLoader.gd")
 
 const ALLOWED_INTENTS := [&"visit_place", &"talk_to_npc", &"inspect_item", &"wander", &"rest"]
 
@@ -9,11 +10,14 @@ const ALLOWED_INTENTS := [&"visit_place", &"talk_to_npc", &"inspect_item", &"wan
 var entity_registry = null
 var place_registry = null
 var default_max_count: int = 5
+var planner_config: Dictionary = {}
 
 
 func configure(p_entity_registry, p_place_registry, _pathfinder = null, _event_log = null) -> void:
 	entity_registry = p_entity_registry
 	place_registry = p_place_registry
+	_load_config()
+	default_max_count = int(planner_config.get("defaultMaxCount", default_max_count))
 
 
 func validate_todos(raw_items: Array, npc = null, p_entity_registry = null, p_place_registry = null, max_count: int = -1) -> Array:
@@ -28,7 +32,7 @@ func validate_todos(raw_items: Array, npc = null, p_entity_registry = null, p_pl
 		var todo = _coerce_todo(value)
 		if todo == null:
 			continue
-		if not ALLOWED_INTENTS.has(todo.intent):
+		if not _allowed_intents().has(todo.intent):
 			continue
 		if not _has_valid_target(todo, effective_entity_registry, effective_place_registry):
 			continue
@@ -71,13 +75,18 @@ func _has_valid_target(todo, p_entity_registry, p_place_registry) -> bool:
 
 
 func _fallback_todo(npc = null):
+	_load_config()
+	var fallback_cfg: Dictionary = planner_config.get("fallbackTodo", {})
 	var npc_id: StringName = StringName(npc.get("id")) if npc != null and npc is Object else &""
+	var values := {
+		"npc_id": str(npc_id) if npc_id != &"" else str(fallback_cfg.get("idFallbackNpc", "npc")),
+	}
 	return TodoItemScript.from_dict({
-		"id": "todo_%s_fallback_wander" % (str(npc_id) if npc_id != &"" else "npc"),
-		"intent": "wander",
-		"reason": "fallback after invalid daily todo list",
-		"priority": 0,
-		"status": "pending",
+		"id": _format_template(str(fallback_cfg.get("idTemplate", "todo_{npc_id}_fallback_wander")), values),
+		"intent": str(fallback_cfg.get("intent", "wander")),
+		"reason": str(fallback_cfg.get("reason", "fallback after invalid daily todo list")),
+		"priority": int(fallback_cfg.get("priority", 0)),
+		"status": str(fallback_cfg.get("status", "pending")),
 	})
 
 
@@ -89,17 +98,11 @@ func _fallback_todo(npc = null):
 
 ## build_prompt: 组 OpenAI 风格 messages (system + user)。
 func build_prompt(npc, world: Dictionary) -> Array:
+	_load_config()
 	var allowed := []
-	for intent in ALLOWED_INTENTS:
+	for intent in _allowed_intents():
 		allowed.append(str(intent))
-	var system_text := "你是沙盒小镇里 NPC 的每日行动规划器。必须用中文理解上下文，并让 reason 使用简短中文。 " \
-		+ "intent 只能从这个集合里选择: [" + ", ".join(allowed) + "]。 " \
-		+ "只输出一个 JSON object，格式必须严格是: " \
-		+ "{\"todos\":[{\"intent\":<intent>,\"target_place_id\"?:<id>,\"target_npc_id\"?:<id>," \
-		+ "\"target_item_id\"?:<id>,\"reason\":<short Chinese reason>,\"priority\":<int>}]}. " \
-		+ "visit_place 只能使用 target_place_id，talk_to_npc 只能使用 target_npc_id，" \
-		+ "inspect_item 只能使用 target_item_id。wander 和 rest 不需要目标。 " \
-		+ "只能引用 world context 里出现过的 id。不要输出解释、Markdown 或代码块，只输出 JSON。"
+	var prompt_cfg: Dictionary = planner_config.get("prompt", {})
 
 	var npc_id := ""
 	var npc_name := ""
@@ -119,16 +122,21 @@ func build_prompt(npc, world: Dictionary) -> Array:
 	var item_ids := _registry_ids(world.get("entity_registry", null), "items")
 	var place_summaries := _place_summaries(world.get("place_registry", null))
 
-	var user_text := "NPC id: " + npc_id + "\n" \
-		+ "NPC name: " + npc_name + "\n" \
-		+ "NPC traits: " + JSON.stringify(npc_traits) + "\n" \
-		+ "NPC tags: " + JSON.stringify(npc_tags) + "\n" \
-		+ "NPC runtime: " + JSON.stringify(npc_runtime) + "\n" \
-		+ "可见地点 target_place_id: " + str(place_ids) + "\n" \
-		+ "地点摘要: " + JSON.stringify(place_summaries) + "\n" \
-		+ "可见 NPC target_npc_id: " + str(npc_ids) + "\n" \
-		+ "可见物品 target_item_id: " + str(item_ids) + "\n" \
-		+ "请为这个 NPC 规划今天的 todo JSON。优先选择能体现 traits、tags 和当前 performance state 的行动，reason 必须是中文短句。"
+	var values := {
+		"allowed_intents": ", ".join(allowed),
+		"json_schema": str(prompt_cfg.get("jsonSchema", "{\"todos\":[]}")),
+		"npc_id": npc_id,
+		"npc_name": npc_name,
+		"npc_traits": JSON.stringify(npc_traits),
+		"npc_tags": JSON.stringify(npc_tags),
+		"npc_runtime": JSON.stringify(npc_runtime),
+		"place_ids": str(place_ids),
+		"place_summaries": JSON.stringify(place_summaries),
+		"npc_ids": str(npc_ids),
+		"item_ids": str(item_ids),
+	}
+	var system_text := _format_template(str(prompt_cfg.get("systemTemplate", "")), values)
+	var user_text := _format_template(str(prompt_cfg.get("userTemplate", "")), values)
 
 	return [
 		{"role": "system", "content": system_text},
@@ -249,3 +257,26 @@ func _place_summaries(registry) -> Array:
 func _call_done(on_done: Callable, payload: Dictionary) -> void:
 	if on_done.is_valid():
 		on_done.call(payload)
+
+
+func _load_config() -> void:
+	if planner_config.is_empty():
+		planner_config = ConfigLoaderScript.load_planner_config()
+
+
+func _allowed_intents() -> Array:
+	_load_config()
+	var raw: Array = planner_config.get("allowedIntents", [])
+	if raw.is_empty():
+		return ALLOWED_INTENTS.duplicate()
+	var result: Array[StringName] = []
+	for value in raw:
+		result.append(StringName(value))
+	return result
+
+
+func _format_template(template: String, values: Dictionary) -> String:
+	var result := template
+	for key in values.keys():
+		result = result.replace("{%s}" % str(key), str(values[key]))
+	return result

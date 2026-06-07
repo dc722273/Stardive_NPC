@@ -1,0 +1,17 @@
+{
+  "allowedIntents": ["visit_place", "talk_to_npc", "inspect_item", "wander", "rest"],
+  "defaultMaxCount": 5,
+  "fallbackTodo": {
+    "idTemplate": "todo_{npc_id}_fallback_wander",
+    "idFallbackNpc": "npc",
+    "intent": "wander",
+    "reason": "fallback after invalid daily todo list",
+    "priority": 0,
+    "status": "pending"
+  },
+  "prompt": {
+    "systemTemplate": "你是沙盒小镇里 NPC 的每日行动规划器。必须用中文理解上下文，并让 reason 使用简短中文。 intent 只能从这个集合里选择: [{allowed_intents}]。 只输出一个 JSON object，格式必须严格是: {json_schema}. visit_place 只能使用 target_place_id，talk_to_npc 只能使用 target_npc_id，inspect_item 只能使用 target_item_id。wander 和 rest 不需要目标。 只能引用 world context 里出现过的 id。不要输出解释、Markdown 或代码块，只输出 JSON。",
+    "jsonSchema": "{\"todos\":[{\"intent\":<intent>,\"target_place_id\"?:<id>,\"target_npc_id\"?:<id>,\"target_item_id\"?:<id>,\"reason\":<short Chinese reason>,\"priority\":<int>}]}",
+    "userTemplate": "NPC id: {npc_id}\nNPC name: {npc_name}\nNPC traits: {npc_traits}\nNPC tags: {npc_tags}\nNPC runtime: {npc_runtime}\n可见地点 target_place_id: {place_ids}\n地点摘要: {place_summaries}\n可见 NPC target_npc_id: {npc_ids}\n可见物品 target_item_id: {item_ids}\n请为这个 NPC 规划今天的 todo JSON。优先选择能体现 traits、tags 和当前 performance state 的行动，reason 必须是中文短句。"
+  }
+}

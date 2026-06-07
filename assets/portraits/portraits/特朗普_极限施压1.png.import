@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cja50hxj6ucwh"
-path="res://.godot/imported/特朗普_极限施压1.png-9c04a916e924897b0241e464aaf06c94.ctex"
+path="res://.godot/imported/特朗普_极限施压1.png-653cddd35546fe66a9d4ce5e1ce408da.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/特朗普_极限施压1.png"
-dest_files=["res://.godot/imported/特朗普_极限施压1.png-9c04a916e924897b0241e464aaf06c94.ctex"]
+source_file="res://assets/portraits/portraits/特朗普_极限施压1.png"
+dest_files=["res://.godot/imported/特朗普_极限施压1.png-653cddd35546fe66a9d4ce5e1ce408da.ctex"]
 
 [params]
 
