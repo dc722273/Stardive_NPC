@@ -1,0 +1,97 @@
+{
+  "id": "jd",
+  "name": "JD",
+  "visual": {
+    "markerPath": "res://assets/map_markers/JD小球.png"
+  },
+  "tile_x": 15,
+  "tile_y": 9,
+  "traits": {
+    "tell": 58,
+    "face": 82,
+    "control": 76,
+    "caution": 74,
+    "play": 46
+  },
+  "tags": [
+    "你不希望别人跟川普有亲近的关系",
+	"当别人跟川普有亲近关系时，你会吃醋并且表现在语言和行为上",
+    "vice_president",
+    "trump_attention_seeker",
+    "exclusive_political_voice",
+    "succession_planner",
+    "future_president_ambition"
+
+  ],
+  "aliases": ["JD", "jd", "副总统", "万斯", "Vance"],
+  "bodyGags": [
+    {
+      "id": "seal_the_talking_point",
+      "label": "先定口径",
+      "match": {
+        "classificationKeys": ["document.seal"],
+        "reasons": ["power", "awkward", "joke"]
+      },
+      "action": "snap_notebook_close",
+      "preemptiveLine": "先把口径定住。"
+    },
+    {
+      "id": "attention_receipt",
+      "label": "记成一次接近",
+      "match": {
+        "classificationKeys": ["valuable", "valuable.cup"],
+        "reasons": ["status", "debt"]
+      },
+      "action": "reach_then_stop",
+      "preemptiveLine": "这份接近我先记下。"
+    }
+  ],
+  "preference": {
+    "classificationAffinity": {
+      "document": 18,
+      "document.seal": 20,
+      "valuable": 8,
+      "valuable.cup": 4,
+      "cash": -8,
+      "cash.dollars": -10,
+      "drink": -2,
+      "drink.soda": -6,
+      "weapon": -14,
+      "weapon.handgun": -18
+    },
+    "socialAffinity": {
+      "status": 30,
+      "power": 34,
+      "utility": 12,
+      "debt": -10,
+      "awkward": -8,
+      "joke": -12,
+      "danger": -18
+    },
+    "tolerance": {
+      "danger": 34,
+      "debt": 54,
+      "awkward": 68,
+      "repetition": 58
+    }
+  },
+  "style": {
+    "leakActions": ["glance_target", "tap_stop", "blink_twice"],
+    "coverActions": ["straighten_clothes", "fake_serious", "look_away"],
+    "wantActions": ["glance_target", "open_notebook", "reach_then_stop"],
+    "rejectActions": ["hold_up_hands", "look_away", "step_back"],
+    "observeActions": ["look_between", "pen_lift", "eyebrow_raise"],
+    "lineMode": "careful_successor"
+  },
+  "animSetId": "jd",
+  "runtime": {
+    "npcId": "jd",
+    "performanceState": "idle",
+    "emotionalState": "neutral",
+    "cooldowns": {
+      "lastMicroActionId": "",
+      "lastLineMode": "",
+      "lastReactedAt": 0
+    }
+  }
+}

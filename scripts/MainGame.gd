@@ -17,14 +17,21 @@ const LLMClientScript := preload("res://scripts/npc/LLMClient.gd")
 const DailyTodoPlannerScript := preload("res://scripts/npc/DailyTodoPlanner.gd")
 const NPCFeedbackBuilderScript := preload("res://scripts/npc/NPCFeedbackBuilder.gd")
 const NPCPerformanceDirectorScript := preload("res://scripts/npc/NPCPerformanceDirector.gd")
+const ChatTransferParserScript := preload("res://scripts/npc/ChatTransferParser.gd")
+const StakeholderPerceptionServiceScript := preload("res://scripts/npc/StakeholderPerceptionService.gd")
 const NPCMoverScript := preload("res://scripts/npc/NPCMover.gd")
 const TodoExecutorScript := preload("res://scripts/npc/TodoExecutor.gd")
 const NPCActionSchedulerScript := preload("res://scripts/npc/NPCActionScheduler.gd")
+const NPCAutoDropServiceScript := preload("res://scripts/npc/NPCAutoDropService.gd")
+const NPCExecutionLoopScript := preload("res://scripts/npc/NPCExecutionLoop.gd")
 const GameClockScript := preload("res://scripts/world/GameClock.gd")
 const ConfigLoaderScript := preload("res://scripts/config/ConfigLoader.gd")
 const InteractionDeltaRulesScript := preload("res://scripts/world/InteractionDeltaRules.gd")
 const WellbeingRulesScript := preload("res://scripts/world/WellbeingRules.gd")
+const RelationshipDecisionServiceScript := preload("res://scripts/npc/RelationshipDecisionService.gd")
+const StoryArcRegistryScript := preload("res://scripts/world/StoryArcRegistry.gd")
 const HeldItemLayoutScript := preload("res://scripts/ui/HeldItemLayout.gd")
+const NPCContextDebugExporterScript := preload("res://scripts/debug/NPCContextDebugExporter.gd")
 
 @export var cell_size: int = 64
 @export var camera_speed: float = 420.0
@@ -59,12 +66,19 @@ var llm_client
 var daily_todo_planner
 var npc_feedback_builder
 var npc_performance_director
+var chat_transfer_parser
+var stakeholder_perception_service
 
 # NPC 执行层：每个 NPC 一个 mover（持路径状态），共享 executor + scheduler。
 var npc_movers: Dictionary = {}   # npc_id(StringName) -> NPCMover
 var npc_feedback_pause_until_ms: Dictionary = {}  # npc_id(StringName) -> timestamp_ms
 var todo_executor
 var action_scheduler
+var npc_auto_drop_service
+var npc_execution_loop
+var relationship_decision_service
+var story_arc_registry
+var npc_context_debug_exporter
 
 # 执行节流：每隔 npc_execution_interval 秒自动驱动一次 NPC 执行（瞬移式 executor）。
 @export var npc_execution_interval: float = 0.8
@@ -170,6 +184,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			save_game_state()
 		elif event.keycode == KEY_L and event.ctrl_pressed:
 			load_game_state()
+		elif event.keycode == KEY_D and event.ctrl_pressed:
+			export_npc_context_debug_dump()
 		elif event.keycode == KEY_H:
 			toggle_controls_hint()
 
@@ -540,6 +556,7 @@ func _handle_npc_release(npc_id: StringName, drop_world: Vector2) -> bool:
 		var payload := _npc_encounter_payload(npc_id, target_npc)
 		var event = event_log.record(&"player_drop_npc_near_npc", npc_id, target_npc, &"npc", ConstantsScript.world_to_cell(drop_world), payload, &"player", tick)
 		_apply_wellbeing_to_event(event)
+		_update_feedback_text(str(payload.get("event_text", _ui_message("droppedEntity", {"entity_id": str(npc_id)}))))
 		_emit_interaction_feedback(event, _payload_npc_ids(payload))
 		return true
 	return false
@@ -614,54 +631,10 @@ func _item_event_payload(item_id: StringName, target_npc_id: StringName, previou
 
 
 func _maybe_auto_drop_rejected_item(item_id: StringName, target_npc_id: StringName, payload: Dictionary) -> Dictionary:
-	if not entity_registry.items.has(item_id) or not entity_registry.npcs.has(target_npc_id):
-		return {}
-	var stance: Dictionary = payload.get("gift_stance", {})
-	var stance_result := str(stance.get("result", ""))
-	var trace: Dictionary = payload.get("interaction_trace", {})
-	var count := int(trace.get("countInWindow", 1))
-	var stage := str(trace.get("stage", "new"))
-	var item = entity_registry.items[item_id]
-	var npc = entity_registry.npcs[target_npc_id]
-	if not _npc_auto_drop_candidate(item, npc, stance):
-		return {}
-	var threshold_info := _npc_auto_drop_threshold(item, npc, stance)
-	var threshold := int(threshold_info.get("threshold", 3))
-	if count < threshold:
-		return {}
-
-	if item.anchor_npc_id() != target_npc_id:
-		return {}
-	var drop_pos := _npc_auto_drop_position(target_npc_id, item_id)
-	item.attach_to_ground(drop_pos, "rejected")
-	return {
-		"npc_id": target_npc_id,
-		"npc_name": npc.name,
-		"item_id": item_id,
-		"item_name": item.name,
-		"reason": str(stance.get("dominantReason", "reject")),
-		"countInWindow": count,
-		"stage": stage,
-		"threshold": threshold,
-		"thresholdFactors": threshold_info.get("factors", []),
-		"worldPosition": {"x": drop_pos.x, "y": drop_pos.y},
-		"cell": ConstantsScript.cell_to_dict(ConstantsScript.world_to_cell(drop_pos)),
-		"finalAnchor": {"type": "ground"},
-	}
-
-
-func _npc_auto_drop_candidate(item, npc, stance: Dictionary) -> bool:
-	var threshold_config: Dictionary = gameplay_config.get("autoDropThreshold", {})
-	if threshold_config.is_empty():
-		threshold_config = ConfigLoaderScript.load_gameplay_config().get("autoDropThreshold", {})
-	var candidate_cfg: Dictionary = threshold_config.get("candidate", {})
-	var result := str(stance.get("result", ""))
-	var direct_results: Array = _array_from(candidate_cfg.get("results", []))
-	if direct_results.has(result):
-		return true
-	if result == "reject":
-		return _auto_drop_conditions_match(candidate_cfg.get("rejectAny", []), item, npc, stance, false)
-	return false
+	if npc_auto_drop_service == null:
+		npc_auto_drop_service = NPCAutoDropServiceScript.new()
+		npc_auto_drop_service.configure(entity_registry, gameplay_config)
+	return npc_auto_drop_service.maybe_auto_drop_rejected_item(item_id, target_npc_id, payload)
 
 
 func _gift_context_for_item_event(item_id: StringName, target_npc_id: StringName, previous_holder_id: StringName = &"", operator: String = "player_drag") -> Dictionary:
@@ -689,102 +662,6 @@ func _gift_context_for_item_event(item_id: StringName, target_npc_id: StringName
 		"attributionTarget": attribution_target,
 		"attributionConfidence": confidence,
 	}
-
-
-func _npc_auto_drop_threshold(item, npc, stance: Dictionary) -> Dictionary:
-	var threshold_config: Dictionary = gameplay_config.get("autoDropThreshold", {})
-	if threshold_config.is_empty():
-		threshold_config = ConfigLoaderScript.load_gameplay_config().get("autoDropThreshold", {})
-	var threshold := int(threshold_config.get("base", 3))
-	var factors: Array = []
-	var pressure_delta := 0
-	var strongest_delay_delta := 0
-	for raw_factor in threshold_config.get("factors", []):
-		if not (raw_factor is Dictionary):
-			continue
-		var factor: Dictionary = raw_factor
-		if _auto_drop_factor_matches(factor, item, npc, stance):
-			var delta := int(factor.get("delta", 0))
-			if delta < 0:
-				pressure_delta += delta
-			elif delta > strongest_delay_delta:
-				strongest_delay_delta = delta
-			factors.append(str(factor.get("name", "")))
-	threshold += pressure_delta + strongest_delay_delta
-
-	return {
-		"threshold": clampi(threshold, int(threshold_config.get("min", 2)), int(threshold_config.get("max", 5))),
-		"factors": factors,
-	}
-
-
-func _auto_drop_factor_matches(factor: Dictionary, item, npc, stance: Dictionary) -> bool:
-	if factor.has("all"):
-		return _auto_drop_conditions_match(factor.get("all", []), item, npc, stance, true)
-	if factor.has("any"):
-		return _auto_drop_conditions_match(factor.get("any", []), item, npc, stance, false)
-	return false
-
-
-func _auto_drop_conditions_match(conditions: Variant, item, npc, stance: Dictionary, require_all: bool) -> bool:
-	if not (conditions is Array):
-		return true
-	var matched_any := false
-	for raw_condition in conditions:
-		if not (raw_condition is Dictionary):
-			continue
-		var matched := _auto_drop_condition_matches(raw_condition, item, npc, stance)
-		if require_all and not matched:
-			return false
-		if matched:
-			matched_any = true
-	return true if require_all else matched_any
-
-
-func _auto_drop_condition_matches(condition: Dictionary, item, npc, stance: Dictionary) -> bool:
-	var value: Variant = _auto_drop_condition_value(condition, item, npc, stance)
-	if condition.has("eq") and str(value) != str(condition.get("eq", "")):
-		return false
-	if condition.has("gte") and not (float(value) >= float(condition.get("gte", 0))):
-		return false
-	if condition.has("lte") and not (float(value) <= float(condition.get("lte", 0))):
-		return false
-	if condition.has("has"):
-		return value is Array and value.has(condition.get("has"))
-	return true
-
-
-func _auto_drop_condition_value(condition: Dictionary, item, npc, stance: Dictionary) -> Variant:
-	var source := str(condition.get("source", "stance"))
-	var field := str(condition.get("field", ""))
-	if source == "social":
-		var social: Dictionary = item.social if item != null and item.social is Dictionary else {}
-		return social.get(field, 0)
-	if source == "traits":
-		var traits: Dictionary = npc.traits if npc != null and npc.traits is Dictionary else {}
-		return traits.get(field, 0)
-	if source == "tags":
-		return npc.tags if npc != null and npc.tags is Array else []
-	if field == "reject_margin":
-		return int(stance.get("reject", 0)) - int(stance.get("want", 0))
-	if field == "reason":
-		return str(stance.get("dominantReason", ""))
-	return stance.get(field, null)
-
-
-func _npc_auto_drop_position(npc_id: StringName, item_id: StringName) -> Vector2:
-	if not entity_registry.npcs.has(npc_id):
-		return Vector2.ZERO
-	var npc = entity_registry.npcs[npc_id]
-	var offset := Vector2(ConstantsScript.CELL_SIZE * 0.85, ConstantsScript.CELL_SIZE * 0.42)
-	if not str(item_id).is_empty():
-		var sign := 1.0 if abs(hash(str(item_id))) % 2 == 0 else -1.0
-		offset.x *= sign
-	var candidate: Vector2 = npc.position + offset
-	var cell := ConstantsScript.world_to_cell(candidate)
-	if entity_registry.map_bounds != Rect2i() and not entity_registry.map_bounds.has_point(cell):
-		return npc.position
-	return candidate
 
 
 func _npc_encounter_payload(primary_npc_id: StringName, target_npc_id: StringName) -> Dictionary:
@@ -1281,7 +1158,7 @@ func _emit_interaction_performance_text(event, npc_id: StringName) -> void:
 	if plan.is_empty():
 		return
 	var judgement: Dictionary = _performance_judgement_from_payload(payload, npc_id)
-	var rendered: String = npc_performance_director.render_plan(plan, judgement)
+	var rendered: String = npc_performance_director.render_plan(plan, judgement, false)
 	if rendered.is_empty():
 		return
 	event.payload["interaction_performance_text"] = rendered
@@ -1334,7 +1211,7 @@ func _apply_wellbeing_to_event(event) -> void:
 		if plan.is_empty():
 			return
 		event.payload["wellbeing_performance_plan"] = plan
-		var rendered: String = npc_performance_director.render_plan(plan, judgement)
+		var rendered: String = npc_performance_director.render_plan(plan, judgement, false)
 		if not rendered.is_empty():
 			event.payload["wellbeing_feedback_text"] = rendered
 			event.payload["event_text"] = rendered
@@ -1406,6 +1283,7 @@ func _pause_npc_for_feedback(npc_id: StringName, seconds: float = FEEDBACK_PAUSE
 func _remember_event_for_npcs(event, npc_ids: Array) -> void:
 	if event == null or entity_registry == null:
 		return
+	_observe_story_arcs(event)
 	for raw_id in npc_ids:
 		_remember_event_for_npc(event, StringName(raw_id))
 
@@ -1458,6 +1336,16 @@ func _remember_npc_feedback_line(npc_id: StringName, source_event, line: String)
 func _trim_npc_recent_events(npc) -> void:
 	while npc != null and npc.recent_events.size() > NPC_RECENT_MEMORY_LIMIT:
 		npc.recent_events.pop_front()
+
+
+func _observe_story_arcs(event) -> Array:
+	if story_arc_registry == null or event == null or entity_registry == null:
+		return []
+	var updates: Array = story_arc_registry.observe_event(event, entity_registry, tick)
+	if not updates.is_empty() and event.payload is Dictionary:
+		event.payload["story_arc_updates"] = updates
+		event.payload["active_story_arcs"] = story_arc_registry.to_dict().get("arcs", {})
+	return updates
 
 
 func _is_npc_feedback_paused(npc_id: StringName) -> bool:
@@ -1547,6 +1435,13 @@ func _record_direct_chat_event(target_npc_id: StringName, message: String):
 		"scene_seed": _chat_scene_seed(chat_cfg.get("sceneSeed", {}), target_npc_id, values),
 		"relationship_hint": _template_field(chat_cfg, "relationshipHint", values),
 	}
+	var social_fact := _chat_social_fact(target_npc_id, message)
+	if not social_fact.is_empty():
+		payload["social_fact"] = social_fact
+		var perception := _apply_chat_stakeholder_perception(target_npc_id, social_fact)
+		if not perception.is_empty():
+			payload["stakeholder_perception"] = perception
+			payload["relation_memory_updates"] = perception.get("relationMemoryUpdates", [])
 	var event = event_log.record(&"player_chat_to_npc", target_npc_id, target_npc_id, &"npc", npc.current_cell, payload, &"player", tick)
 	_remember_event_for_npcs(event, [target_npc_id])
 	return event
@@ -1571,31 +1466,43 @@ func _chat_scene_seed(seed_cfg: Dictionary, target_npc_id: StringName, values: D
 
 
 func _parse_chat_transfer(target_npc_id: StringName, message: String) -> Dictionary:
-	if not _looks_like_transfer_text(message):
-		return {"ok": false}
-	var item_id := _find_item_in_text(message)
-	var giver_id := _find_giver_before_transfer_marker(message, target_npc_id)
-	var recipient_id := _find_explicit_recipient_after_transfer_marker(message, target_npc_id)
-	if recipient_id == &"":
-		recipient_id = target_npc_id
-	if item_id == &"" or giver_id == &"" or recipient_id == &"":
-		return {"ok": false}
-	return {
-		"ok": true,
-		"item_id": item_id,
-		"giver_id": giver_id,
-		"recipient_id": recipient_id,
-	}
+	if chat_transfer_parser == null:
+		chat_transfer_parser = ChatTransferParserScript.new()
+		chat_transfer_parser.configure(entity_registry, gameplay_config)
+	return chat_transfer_parser.parse_transfer(target_npc_id, message)
+
+
+func _chat_social_fact(target_npc_id: StringName, message: String) -> Dictionary:
+	_ensure_stakeholder_perception_service()
+	if stakeholder_perception_service == null:
+		return {}
+	var fact: Dictionary = stakeholder_perception_service.parse_chat_social_fact(target_npc_id, message)
+	return fact if bool(fact.get("ok", false)) else {}
+
+
+func _apply_chat_stakeholder_perception(target_npc_id: StringName, social_fact: Dictionary) -> Dictionary:
+	_ensure_stakeholder_perception_service()
+	if stakeholder_perception_service == null:
+		return {}
+	return stakeholder_perception_service.apply_observer_perception(target_npc_id, social_fact, tick)
+
+
+func _ensure_stakeholder_perception_service() -> void:
+	if stakeholder_perception_service != null:
+		return
+	stakeholder_perception_service = StakeholderPerceptionServiceScript.new()
+	stakeholder_perception_service.configure(entity_registry, gameplay_config)
 
 
 func _apply_chat_transfer_event(target_npc_id: StringName, message: String, transfer: Dictionary):
 	var item_id := StringName(transfer.get("item_id", &""))
 	var giver_id := StringName(transfer.get("giver_id", &""))
 	var recipient_id := StringName(transfer.get("recipient_id", target_npc_id))
+	var quantity: int = max(1, int(transfer.get("quantity", 1)))
 	if item_id == &"" or giver_id == &"" or not entity_registry.items.has(item_id) or not entity_registry.npcs.has(recipient_id):
 		return _record_direct_chat_event(target_npc_id, message)
 	entity_registry.give_item_to_npc(item_id, recipient_id)
-	var payload := _item_event_payload(item_id, recipient_id, giver_id, {
+	var gift_context := {
 		"operator": "player_chat_report",
 		"giverNpcId": giver_id,
 		"receiverNpcId": recipient_id,
@@ -1603,7 +1510,12 @@ func _apply_chat_transfer_event(target_npc_id: StringName, message: String, tran
 		"toAnchor": {"type": "npc", "npcId": str(recipient_id)},
 		"attributionTarget": "npc",
 		"attributionConfidence": 1.0,
-	})
+	}
+	var payload := _item_event_payload(item_id, recipient_id, giver_id, gift_context)
+	if quantity > 1:
+		for _index in range(quantity - 1):
+			payload = _item_event_payload(item_id, recipient_id, giver_id, gift_context)
+		payload["reported_quantity"] = quantity
 	var world_event_text := str(payload.get("event_text", ""))
 	var auto_drop := _maybe_auto_drop_rejected_item(item_id, recipient_id, payload)
 	if not auto_drop.is_empty():
@@ -1666,140 +1578,6 @@ func _emit_npc_chat_feedback(event, npc_id: StringName) -> void:
 	)
 
 
-func _looks_like_transfer_text(text: String) -> bool:
-	for marker in _chat_transfer_markers():
-		if text.find(marker) >= 0:
-			return true
-	return false
-
-
-func _chat_transfer_markers() -> Array:
-	var chat_cfg: Dictionary = _chat_config()
-	return _array_from(chat_cfg.get("transferMarkers", []))
-
-
-func _chat_pronoun_recipients() -> Array:
-	var chat_cfg: Dictionary = _chat_config()
-	return _array_from(chat_cfg.get("pronounRecipients", []))
-
-
-func _chat_config() -> Dictionary:
-	var chat_cfg: Dictionary = gameplay_config.get("chat", {})
-	if chat_cfg.is_empty():
-		chat_cfg = ConfigLoaderScript.load_gameplay_config().get("chat", {})
-	return chat_cfg
-
-
-func _find_npc_in_text(text: String, exclude_id: StringName = &"") -> StringName:
-	var best_id: StringName = &""
-	var best_len := 0
-	for npc in entity_registry.npcs.values():
-		if npc.id == exclude_id:
-			continue
-		for alias in _npc_text_aliases(npc):
-			if alias.length() > best_len and text.find(alias) >= 0:
-				best_id = npc.id
-				best_len = alias.length()
-	return best_id
-
-
-func _find_giver_before_transfer_marker(text: String, exclude_id: StringName = &"") -> StringName:
-	var marker_start := -1
-	for marker in _chat_transfer_markers():
-		var pos := text.find(marker)
-		if pos >= 0 and (marker_start < 0 or pos < marker_start):
-			marker_start = pos
-	if marker_start < 0:
-		return _find_npc_in_text(text, exclude_id)
-	var giver_id := _find_npc_in_text(text.substr(0, marker_start), exclude_id)
-	if giver_id != &"":
-		return giver_id
-	return _find_npc_in_text(text, exclude_id)
-
-
-func _find_explicit_recipient_after_transfer_marker(text: String, fallback_id: StringName = &"") -> StringName:
-	var marker_pos := -1
-	for marker in _chat_transfer_markers():
-		var pos := text.find(marker)
-		if pos >= 0 and (marker_pos < 0 or pos < marker_pos):
-			marker_pos = pos + marker.length()
-	if marker_pos < 0:
-		return fallback_id
-	var tail := text.substr(marker_pos)
-	var best_id: StringName = &""
-	var best_pos := 999999
-	var best_len := 0
-	for npc in entity_registry.npcs.values():
-		for alias in _npc_text_aliases(npc):
-			var pos := tail.find(alias)
-			if pos >= 0 and (pos < best_pos or (pos == best_pos and alias.length() > best_len)):
-				best_id = npc.id
-				best_pos = pos
-				best_len = alias.length()
-	if best_id == &"" and _text_has_pronoun_recipient(tail):
-		return fallback_id
-	return best_id
-
-
-func _text_has_pronoun_recipient(text: String) -> bool:
-	for pronoun in _chat_pronoun_recipients():
-		if text.find(pronoun) >= 0:
-			return true
-	return false
-
-
-func _find_item_in_text(text: String) -> StringName:
-	var best_id: StringName = &""
-	var best_len := 0
-	for item in entity_registry.items.values():
-		for alias in _item_text_aliases(item):
-			if alias.length() > best_len and text.find(alias) >= 0:
-				best_id = item.id
-				best_len = alias.length()
-	return best_id
-
-
-func _npc_text_aliases(npc) -> Array[String]:
-	var aliases: Array[String] = []
-	for value in [str(npc.id), npc.name]:
-		if not value.is_empty() and not aliases.has(value):
-			aliases.append(value)
-	var raw_aliases: Variant = _object_field(npc, "aliases", [])
-	if raw_aliases is Array:
-		for raw_alias in raw_aliases:
-			var alias := str(raw_alias)
-			if not alias.is_empty() and not aliases.has(alias):
-				aliases.append(alias)
-	return aliases
-
-
-func _item_text_aliases(item) -> Array[String]:
-	var aliases: Array[String] = []
-	for value in [str(item.id), str(item.type_id), item.name, item.category]:
-		if not value.is_empty() and not aliases.has(value):
-			aliases.append(value)
-	var object_type: Dictionary = entity_registry.object_types.get(str(item.type_id), entity_registry.object_types.get(item.type_id, {}))
-	var type_name := str(object_type.get("name", ""))
-	if not type_name.is_empty() and not aliases.has(type_name):
-		aliases.append(type_name)
-	var raw_aliases: Variant = object_type.get("aliases", [])
-	if raw_aliases is Array:
-		for raw_alias in raw_aliases:
-			var alias := str(raw_alias)
-			if not alias.is_empty() and not aliases.has(alias):
-				aliases.append(alias)
-	return aliases
-
-
-func _object_field(value, field_name: String, fallback = null) -> Variant:
-	if value is Dictionary:
-		return value.get(field_name, fallback)
-	if value != null and value is Object:
-		var field_value: Variant = value.get(field_name)
-		return fallback if field_value == null else field_value
-	return fallback
-
-
 func toggle_fenced_area_mode() -> void:
 	fenced_area_mode = not fenced_area_mode
 	grid_selection_overlay.enabled = true
@@ -1840,6 +1618,30 @@ func update_feedback_reaction(event_text: String) -> void:
 
 func generate_daily_todo_hotkey_placeholder() -> void:
 	request_daily_todos_for_all_npcs()
+
+
+func export_npc_context_debug_dump() -> Dictionary:
+	if entity_registry == null:
+		_update_feedback_text(_ui_message("contextExportFailed", {}, "NPC context export failed"))
+		return {"ok": false, "reason": "missing_entity_registry"}
+	npc_context_debug_exporter = NPCContextDebugExporterScript.new()
+	npc_context_debug_exporter.configure({
+		"entity_registry": entity_registry,
+		"place_registry": place_registry,
+		"pathfinder": pathfinder,
+		"event_log": event_log,
+		"daily_todo_planner": daily_todo_planner,
+		"npc_feedback_builder": npc_feedback_builder,
+		"gameplay_config": gameplay_config,
+		"tick": tick,
+		"output_dir": "res://debug",
+	})
+	var result: Dictionary = npc_context_debug_exporter.export_all()
+	if bool(result.get("ok", false)):
+		_update_feedback_text(_ui_message("contextExported", {"path": str(result.get("latest_markdown_path", ""))}, "NPC context exported: {path}"))
+	else:
+		_update_feedback_text(_ui_message("contextExportFailed", {}, "NPC context export failed"))
+	return result
 
 
 ## 按 T：对每个 NPC 发起真实 daily todo 规划。
@@ -1917,90 +1719,97 @@ func _clear_pending_todos(npc) -> void:
 ## → mover.begin_move 规划 waypoints → todo.status=active（交给逐帧 advance 层连续推进）。
 ## 遵守 AI Town 边界：只消费已存在（且经 validate_todos 校验过）的 todo，不凭空造 world state。
 func tick_npc_execution() -> void:
-	if entity_registry == null or todo_executor == null:
-		return
-	for npc in entity_registry.npcs.values():
-		_decide_one_npc(npc)
+	_ensure_npc_execution_loop()
+	if npc_execution_loop != null:
+		npc_execution_loop.tick(tick)
 
 
 func _decide_one_npc(npc) -> void:
-	if npc == null or not (npc.todo_list is Array):
+	_ensure_npc_execution_loop()
+	if npc_execution_loop != null:
+		npc_execution_loop.decide_one_npc(npc, tick)
+
+
+func _maybe_create_emergent_todo(npc):
+	_ensure_npc_execution_loop()
+	if npc_execution_loop != null:
+		return npc_execution_loop._maybe_create_emergent_todo(npc, tick)
+	return null
+
+
+func _sync_npc_execution_visual(npc, bubble_text: String) -> void:
+	if entity_visual_layer == null:
 		return
-	if _is_npc_feedback_paused(npc.id):
+	entity_visual_layer.sync_from_registry(entity_registry)
+	if npc != null and entity_visual_layer.npc_visuals.has(npc.id):
+		entity_visual_layer.npc_visuals[npc.id].show_bubble(bubble_text)
+
+
+func _ensure_npc_execution_loop() -> void:
+	if npc_execution_loop != null:
 		return
-	var mover = _mover_for(npc)
-	if not mover.is_idle():
-		return
-	var todo = _next_pending_todo(npc)
-	if todo == null:
-		return
-	# movement lane 锁：同一 NPC 同一时刻只跑一个 movement action（spec Parallel action lanes）。
-	var lane_action := {"id": StringName("exec_%s_%s" % [str(npc.id), str(todo.id)]), "npc_id": npc.id, "lane": &"movement"}
-	if action_scheduler != null:
-		var lane_result: Dictionary = action_scheduler.start_action(lane_action)
-		if not bool(lane_result.get("accepted", false)):
-			return
-	var ctx := {"entity_registry": entity_registry, "place_registry": place_registry, "pathfinder": pathfinder, "event_log": event_log, "mover": mover}
-	var resolved: Dictionary = todo_executor._target_world_pos(todo, ctx, npc)
-	if not bool(resolved.get("ok", false)):
-		todo_executor.mark_todo_blocked(npc, todo)
-		if action_scheduler != null:
-			action_scheduler.finish_action(npc.id, &"movement")
-		return
-	mover.begin_move(npc, resolved.get("world_pos"), resolved.get("interact_target"), todo, float(resolved.get("arrival_radius", ConstantsScript.INTERACT_RADIUS)))
-	todo.status = &"active"
-	if entity_visual_layer != null:
-		entity_visual_layer.sync_from_registry(entity_registry)
-		if entity_visual_layer.npc_visuals.has(npc.id):
-			entity_visual_layer.npc_visuals[npc.id].show_bubble(str(todo.reason))
+	npc_execution_loop = NPCExecutionLoopScript.new()
+	npc_execution_loop.configure({
+		"entity_registry": entity_registry,
+		"place_registry": place_registry,
+		"pathfinder": pathfinder,
+		"event_log": event_log,
+		"todo_executor": todo_executor,
+		"action_scheduler": action_scheduler,
+		"relationship_decision_service": relationship_decision_service,
+		"story_arc_registry": story_arc_registry,
+		"gameplay_config": gameplay_config,
+		"npc_movers": npc_movers,
+		"paused_checker": Callable(self, "_is_npc_feedback_paused"),
+		"event_rememberer": Callable(self, "_remember_event_for_npcs"),
+		"visual_syncer": Callable(self, "_sync_npc_execution_visual"),
+	})
 
 
 ## advance_npc_movement: ADVANCE 层（_process 每帧调用）。把每个非 idle 的 NPC 沿 waypoints
 ## 连续推进一步；到达目标或进入交互半径时 → todo.status=done + 记录完成事件 + 释放 movement lane。
 func advance_npc_movement(delta: float) -> void:
-	if entity_registry == null:
-		return
-	for npc in entity_registry.npcs.values():
-		if _is_npc_feedback_paused(npc.id):
-			continue
-		var mover = npc_movers.get(npc.id)
-		if mover == null or mover.is_idle():
-			continue
-		var r: Dictionary = mover.advance(npc, delta)
-		# 到达后进入 dwell(执行 intent 的停留);只有 dwell 满 DWELL_DURATION(done)才完成 todo,
-		# 避免 rest/inspect/talk 等到达即瞬间 done 的「哗哗连发」。
-		if bool(r.get("done", false)):
-			_complete_active_todo(npc, mover)
+	_ensure_npc_execution_loop()
+	if npc_execution_loop != null:
+		npc_execution_loop.advance(delta, tick)
 
 
 func _complete_active_todo(npc, mover) -> void:
-	var todo = mover.current_todo
-	if todo != null:
-		todo.status = &"done"
-		if event_log != null and event_log.has_method("record"):
-			event_log.record(&"npc_completed_todo", npc.id, &"", &"cell", npc.current_cell, {"todo_id": todo.id}, &"system", tick)
-	if action_scheduler != null:
-		action_scheduler.finish_action(npc.id, &"movement")
-	mover.reset()
+	_ensure_npc_execution_loop()
+	if npc_execution_loop != null:
+		npc_execution_loop._complete_active_todo(npc, mover, tick)
 
 
-## 取该 NPC todo_list 中第一个 pending todo（按 list 顺序；优先级排序留待后续）。
+func _record_npc_todo_experience(npc, todo, event_type: StringName, reason: StringName, success: bool):
+	_ensure_npc_execution_loop()
+	return npc_execution_loop.record_npc_todo_experience(npc, todo, event_type, reason, success, tick) if npc_execution_loop != null else null
+
+
+func _npc_todo_event_type(todo) -> StringName:
+	_ensure_npc_execution_loop()
+	return npc_execution_loop.npc_todo_event_type(todo) if npc_execution_loop != null else &"npc_completed_todo"
+
+
+func _todo_target_id(todo) -> StringName:
+	_ensure_npc_execution_loop()
+	return npc_execution_loop.todo_target_id(todo) if npc_execution_loop != null else &""
+
+
+func _todo_target_type(todo) -> StringName:
+	_ensure_npc_execution_loop()
+	return npc_execution_loop.todo_target_type(todo) if npc_execution_loop != null else &"cell"
+
+
+## 取该 NPC todo_list 中优先级最高的 pending todo。
 func _next_pending_todo(npc):
-	for todo in npc.todo_list:
-		if todo != null and todo is Object and StringName(todo.status) == &"pending":
-			return todo
-	return null
+	_ensure_npc_execution_loop()
+	return npc_execution_loop._next_pending_todo(npc) if npc_execution_loop != null else null
 
 
 ## 懒创建并缓存每个 NPC 的 NPCMover（持各自路径状态）。
 func _mover_for(npc):
-	var key: StringName = npc.id
-	if npc_movers.has(key):
-		return npc_movers[key]
-	var mover = NPCMoverScript.new()
-	mover.configure(entity_registry, place_registry, pathfinder, event_log)
-	npc_movers[key] = mover
-	return mover
+	_ensure_npc_execution_loop()
+	return npc_execution_loop._mover_for(npc) if npc_execution_loop != null else null
 
 
 func save_game_state() -> void:
@@ -2009,6 +1818,7 @@ func save_game_state() -> void:
 		"places": place_registry.to_dict(),
 		"pathfinder": pathfinder.to_dict(),
 		"events": event_log.to_dict(),
+		"story_arcs": story_arc_registry.to_dict() if story_arc_registry != null else {},
 		"selected_entity_id": selected_entity_id,
 	}
 	_update_feedback_text(_ui_message("saved"))
@@ -2022,6 +1832,8 @@ func load_game_state() -> void:
 	place_registry.load_from_dict(saved_snapshot.get("places", {}))
 	pathfinder.load_from_dict(saved_snapshot.get("pathfinder", {}))
 	event_log.load_from_dict(saved_snapshot.get("events", {}))
+	if story_arc_registry != null:
+		story_arc_registry.load_from_dict(saved_snapshot.get("story_arcs", {}))
 	selected_entity_id = StringName(saved_snapshot.get("selected_entity_id", ""))
 	fenced_area_overlay.refresh_from_registry()
 	_update_feedback_text(_ui_message("loaded"))
@@ -2184,6 +1996,11 @@ func _wire_npc_llm_services() -> void:
 	daily_todo_planner = DailyTodoPlannerScript.new()
 	daily_todo_planner.configure(entity_registry, place_registry, pathfinder, event_log)
 
+	chat_transfer_parser = ChatTransferParserScript.new()
+	chat_transfer_parser.configure(entity_registry, gameplay_config)
+	stakeholder_perception_service = StakeholderPerceptionServiceScript.new()
+	stakeholder_perception_service.configure(entity_registry, gameplay_config)
+
 	npc_feedback_builder = NPCFeedbackBuilderScript.new()
 	npc_feedback_builder.configure(entity_registry, place_registry, pathfinder, event_log, llm_client, llm_transport)
 
@@ -2195,6 +2012,13 @@ func _wire_npc_llm_services() -> void:
 	action_scheduler = NPCActionSchedulerScript.new()
 	todo_executor = TodoExecutorScript.new()
 	todo_executor.configure(entity_registry, place_registry, pathfinder, event_log)
+	npc_auto_drop_service = NPCAutoDropServiceScript.new()
+	npc_auto_drop_service.configure(entity_registry, gameplay_config)
+	relationship_decision_service = RelationshipDecisionServiceScript.new()
+	relationship_decision_service.configure(gameplay_config)
+	story_arc_registry = StoryArcRegistryScript.new()
+	story_arc_registry.configure(gameplay_config)
+	_ensure_npc_execution_loop()
 
 
 func _seed_sample_npc_item_data() -> void:
@@ -2209,6 +2033,8 @@ func _seed_sample_npc_item_data() -> void:
 	var npc_configs: Array = loaded_npcs.get("configs", [])
 
 	for cfg in npc_configs:
+		if not _config_spawns_in_scene(cfg):
+			continue
 		var npc = NPCStateScript.from_dict(cfg)
 		entity_registry.add_npc(npc)
 
@@ -2217,11 +2043,26 @@ func _seed_sample_npc_item_data() -> void:
 	for item_cfg in item_bundle.get("objects", []):
 		if not (item_cfg is Dictionary):
 			continue
+		if not _config_spawns_in_scene(item_cfg):
+			continue
 		var item = ItemStateScript.from_dict(item_cfg, entity_registry.object_types)
 		entity_registry.add_item(item)
 	entity_registry.repair_inventory_links()
 	_seed_places_from_gameplay()
 	_seed_initial_todos_from_intentions()
+
+
+func _config_spawns_in_scene(config: Dictionary) -> bool:
+	if bool(config.get("disabled", false)):
+		return false
+	var spawn: Variant = config.get("spawn", {})
+	if spawn is Dictionary and spawn.has("enabled"):
+		return bool(spawn.get("enabled", true))
+	if config.has("spawnEnabled"):
+		return bool(config.get("spawnEnabled", true))
+	if config.has("enabled"):
+		return bool(config.get("enabled", true))
+	return true
 
 
 func _seed_places_from_gameplay() -> void:

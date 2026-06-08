@@ -6,6 +6,8 @@
 .superpowers/
 .worktrees/
 .claude/
+debug/*.json
+debug/*.md
 
 # LLM secrets: ignore real .env, keep tracked .env.example
 .env

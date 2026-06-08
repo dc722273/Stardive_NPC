@@ -10,6 +10,7 @@ const WorldEntityRegistryScript := preload("res://scripts/world/WorldEntityRegis
 const WorldPlaceRegistryScript := preload("res://scripts/world/WorldPlaceRegistry.gd")
 const GridPathfinderScript := preload("res://scripts/world/GridPathfinder.gd")
 const InteractionEventLogScript := preload("res://scripts/world/InteractionEventLog.gd")
+const LLMClientScript := preload("res://scripts/npc/LLMClient.gd")
 
 
 func run() -> Array:
@@ -23,10 +24,22 @@ func run() -> Array:
 	_test_transfer_feedback_changes_with_repetition_stage(failures)
 	_test_feedback_prompt_requires_repetition_performance(failures)
 	_test_feedback_prompt_includes_npc_remembered_history(failures)
+	_test_chat_relation_question_surfaces_focused_relation_memory(failures)
+	_test_relation_answer_rules_are_config_driven(failures)
+	_test_relation_answer_stream_preserves_llm_text(failures)
+	_test_relation_shift_stream_preserves_llm_text(failures)
 	_test_transfer_feedback_surfaces_relation_warmth(failures)
 	_test_transfer_feedback_distinguishes_previous_and_target(failures)
 	_test_set_transport_does_not_break_existing_configure(failures)
 	return failures
+
+
+class FakeFeedbackTransport:
+	var preset_result: Dictionary = {"ok": true, "content": ""}
+	func _is_enabled() -> bool:
+		return true
+	func request_chat(_messages: Array, _opts: Dictionary, on_done: Callable) -> void:
+		on_done.call(preset_result)
 
 
 func _make_world() -> Dictionary:
@@ -163,7 +176,7 @@ func _test_transfer_feedback_changes_with_repetition_stage(failures: Array) -> v
 	var builder = NPCFeedbackBuilderScript.new()
 	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
 	var payload := {
-		"item_name": "九筒的枪",
+		"item_name": "政策文件",
 		"previousAnchorNpcId": "npc_alpha",
 		"previousAnchorNpcName": "Alpha",
 		"item_target_id": "npc_beta",
@@ -171,7 +184,7 @@ func _test_transfer_feedback_changes_with_repetition_stage(failures: Array) -> v
 		"interaction_trace": {"countInWindow": 4, "stage": "gagged", "heat": 168},
 		"performance_plan": {"pattern": "gag_callback"},
 	}
-	var event = world["event_log"].record(&"player_transfer_item_between_npcs", &"item_gun", &"npc_beta", &"npc", Vector2i(5, 5), payload)
+	var event = world["event_log"].record(&"player_transfer_item_between_npcs", &"policy_doc", &"npc_beta", &"npc", Vector2i(5, 5), payload)
 	var target_feedback: Dictionary = builder.build_feedback(event, world["npc_beta"], world)
 	_assert_equal(str(target_feedback.get("text", "")).find("又来") >= 0, true, "deeply familiar transfer pressure uses callback fallback", failures)
 
@@ -205,7 +218,7 @@ func _test_feedback_prompt_includes_npc_remembered_history(failures: Array) -> v
 	var builder = NPCFeedbackBuilderScript.new()
 	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
 	var npc = world["npc"]
-	var remembered_chat = world["event_log"].record(&"player_chat_to_npc", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"player_message": "刚才那瓶可乐是九筒给你的"})
+	var remembered_chat = world["event_log"].record(&"player_chat_to_npc", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"player_message": "刚才那瓶可乐是musk给你的"})
 	var remembered_reply = world["event_log"].record(&"npc_feedback_line", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"speakerName": "npc_alpha", "text": "我先记着这笔账。"}, &"npc_alpha")
 	npc.recent_events.append(remembered_chat)
 	npc.recent_events.append(remembered_reply)
@@ -217,11 +230,134 @@ func _test_feedback_prompt_includes_npc_remembered_history(failures: Array) -> v
 	for message in messages:
 		combined += str(message.get("content", ""))
 	_assert_equal(combined.contains("npc remembered history"), true, "feedback prompt includes standing NPC memory", failures)
-	_assert_equal(combined.contains("刚才那瓶可乐是九筒给你的"), true, "feedback prompt recalls previous player speech", failures)
+	_assert_equal(combined.contains("刚才那瓶可乐是musk给你的"), true, "feedback prompt recalls previous player speech", failures)
 	_assert_equal(combined.contains("我先记着这笔账"), true, "feedback prompt recalls previous NPC reply", failures)
 	_assert_equal(combined.contains("有尴尬"), true, "feedback prompt summarizes standing relation memory", failures)
 	_assert_equal(combined.find("玩家之前对他说过：“你还记得刚才吗？”") < 0, true, "feedback prompt does not mislabel current message as old memory", failures)
 	_assert_equal(combined.contains("sourceEventId"), false, "feedback prompt does not expose internal reply source id", failures)
+
+
+func _test_chat_relation_question_surfaces_focused_relation_memory(failures: Array) -> void:
+	var world := _make_world()
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
+	var npc = world["npc"]
+	world["npc_beta"].aliases = ["musk"]
+	world["entity_registry"].apply_relation_delta(&"npc_alpha", &"npc_beta", {
+		"attention": 100,
+		"warmth": 88,
+		"awkward": 12,
+		"suspicion": 0,
+		"debt": 80,
+		"fun": 20,
+	}, "gold_cup_pressure", 200)
+	var event = world["event_log"].record(&"player_chat_to_npc", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"player_message": "你现在怎么看musk？"})
+
+	var feedback: Dictionary = builder.build_feedback(event, npc, world)
+	var text := str(feedback.get("text", ""))
+	_assert_equal(text.contains("认可和期待") or text.contains("warmth=88"), true, "relation question fallback shows strong warmth/expectation", failures)
+	_assert_equal(text.contains("debt=80"), true, "relation question fallback shows concrete debt value", failures)
+	_assert_equal(text.contains("认可对方") or text.contains("互动有期待"), true, "relation question fallback states a clear positive attitude", failures)
+
+	var messages: Array = builder._build_feedback_messages(feedback, event, npc)
+	var combined := ""
+	for message in messages:
+		combined += str(message.get("content", ""))
+	_assert_equal(combined.contains("relation focus"), true, "feedback prompt includes relation focus for mentioned NPC", failures)
+	_assert_equal(combined.contains("relation answer target"), true, "feedback prompt includes a concrete relation answer target", failures)
+	_assert_equal(combined.contains("warmth=88"), true, "relation focus includes concrete warmth value", failures)
+	_assert_equal(combined.contains("debt=80"), true, "relation focus includes concrete debt value", failures)
+	_assert_equal(combined.contains("很强认可和期待"), true, "relation focus translates high warmth into strong expectation", failures)
+	_assert_equal(combined.contains("必须表达：很明确地认可对方"), true, "relation answer target uses configured high-warmth rule", failures)
+
+
+func _test_relation_answer_rules_are_config_driven(failures: Array) -> void:
+	var world := _make_world()
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
+	builder.feedback_config["relationMemory"]["answerRules"] = [
+		{"field": "fun", "gte": 40, "weight": 2.0, "text": "把对方当成固定笑点来源"},
+	]
+	var memory := {"fromNpcId": "npc_alpha", "toNpcId": "npc_beta", "warmth": 100, "debt": 100, "attention": 100, "awkward": 0, "suspicion": 0, "fun": 45}
+
+	var attitude := builder._relation_attitude_sentence(memory)
+
+	_assert_equal(attitude, "把对方当成固定笑点来源", "relation answer attitude comes from config rules rather than hardcoded axes", failures)
+
+
+func _test_relation_answer_stream_preserves_llm_text(failures: Array) -> void:
+	var world := _make_world()
+	var builder = NPCFeedbackBuilderScript.new()
+	var transport := FakeFeedbackTransport.new()
+	transport.preset_result = {"ok": true, "content": "我看musk这人，至少懂得把场面摆到我面前；这份礼我收到了，下次他说话我会认真听。"}
+	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"], LLMClientScript.new(), transport)
+	var npc = world["npc"]
+	world["npc_beta"].aliases = ["musk"]
+	world["entity_registry"].apply_relation_delta(&"npc_alpha", &"npc_beta", {
+		"attention": 100,
+		"warmth": 100,
+		"awkward": 0,
+		"suspicion": 0,
+		"debt": 100,
+		"fun": 0,
+	}, "gold_cup_pressure", 200)
+	var event = world["event_log"].record(&"player_chat_to_npc", &"npc_alpha", &"npc_alpha", &"npc", Vector2i(5, 5), {"player_message": "你现在怎么看musk？"})
+
+	var chunks: Array = []
+	var done_payloads: Array = []
+	builder.stream_feedback(event, npc, world, func(chunk: String) -> void:
+		chunks.append(chunk)
+	, func(result: Dictionary) -> void:
+		done_payloads.append(result)
+	)
+
+	_assert_equal(chunks.size(), 1, "relation answer stream emits one LLM chunk", failures)
+	if chunks.size() > 0:
+		_assert_equal(str(chunks[0]).contains("这份礼我收到了"), true, "relation answer stream displays LLM wording", failures)
+		_assert_equal(str(chunks[0]).contains("态度已经很明确"), false, "relation answer stream does not replace non-empty LLM text with fallback contract", failures)
+	_assert_equal(done_payloads.size(), 1, "relation answer stream emits done payload", failures)
+	if done_payloads.size() > 0:
+		_assert_equal(str(done_payloads[0].get("llm_raw_text", "")).contains("这份礼我收到了"), true, "relation answer done keeps raw LLM text for diagnostics", failures)
+		_assert_equal(bool(done_payloads[0].get("used_fallback_text", true)), false, "relation answer done marks that fallback was not used", failures)
+
+
+func _test_relation_shift_stream_preserves_llm_text(failures: Array) -> void:
+	var world := _make_world()
+	var builder = NPCFeedbackBuilderScript.new()
+	var transport := FakeFeedbackTransport.new()
+	transport.preset_result = {"ok": true, "content": "（掂了掂金杯）musk这一下我记下了，东西有分量，人也算会来事。"}
+	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"], LLMClientScript.new(), transport)
+	var npc = world["npc"]
+	world["npc"].name = "川普"
+	world["npc_beta"].name = "musk"
+	var payload := {
+		"item_name": "金杯",
+		"previousAnchorNpcId": "npc_beta",
+		"previousAnchorNpcName": "musk",
+		"item_target_id": "npc_alpha",
+		"item_target_name": "川普",
+		"relation_memory_updates": [
+			{"fromNpcId": "npc_alpha", "toNpcId": "npc_beta", "attention": 100, "warmth": 100, "awkward": 0, "suspicion": 0, "debt": 100, "fun": 0}
+		],
+	}
+	var event = world["event_log"].record(&"player_transfer_item_between_npcs", &"gold_cup", &"npc_alpha", &"npc", Vector2i(5, 5), payload)
+
+	var feedback: Dictionary = builder.build_feedback(event, npc, world)
+	var chunks: Array = []
+	var done_payloads: Array = []
+	builder.stream_feedback(event, npc, world, func(chunk: String) -> void:
+		chunks.append(chunk)
+	, func(result: Dictionary) -> void:
+		done_payloads.append(result)
+	)
+
+	_assert_equal(str(feedback.get("response_contract", {})).contains("relation_shift"), true, "item feedback with strong relation delta gets relation-shift contract", failures)
+	_assert_equal(chunks.size(), 1, "relation shift stream emits one LLM chunk", failures)
+	if chunks.size() > 0:
+		_assert_equal(str(chunks[0]).contains("musk这一下我记下了"), true, "relation shift stream displays LLM wording", failures)
+		_assert_equal(str(chunks[0]).contains("接过金杯后看向musk"), false, "relation shift stream does not replace non-empty LLM text with fallback contract", failures)
+	if done_payloads.size() > 0:
+		_assert_equal(bool(done_payloads[0].get("used_fallback_text", true)), false, "relation shift done marks that fallback was not used", failures)
 
 
 func _test_transfer_feedback_surfaces_relation_warmth(failures: Array) -> void:
@@ -250,17 +386,17 @@ func _test_transfer_feedback_distinguishes_previous_and_target(failures: Array) 
 	var builder = NPCFeedbackBuilderScript.new()
 	builder.configure(world["entity_registry"], world["place_registry"], world["pathfinder"], world["event_log"])
 	var payload := {
-		"item_name": "九筒的枪",
+		"item_name": "政策文件",
 		"previousAnchorNpcId": "npc_alpha",
 		"previousAnchorNpcName": "Alpha",
 		"item_target_id": "npc_beta",
 		"item_target_name": "Beta",
 	}
-	var event = world["event_log"].record(&"player_transfer_item_between_npcs", &"item_gun", &"npc_beta", &"npc", Vector2i(5, 5), payload)
+	var event = world["event_log"].record(&"player_transfer_item_between_npcs", &"policy_doc", &"npc_beta", &"npc", Vector2i(5, 5), payload)
 	var previous_feedback: Dictionary = builder.build_feedback(event, world["npc"], world)
 	var target_feedback: Dictionary = builder.build_feedback(event, world["npc_beta"], world)
 	_assert_equal(str(previous_feedback.get("text", "")).find("递到Beta手里") >= 0, true, "transfer fallback gives previous holder a handoff line", failures)
-	_assert_equal(str(target_feedback.get("text", "")).find("接住九筒的枪") >= 0, true, "transfer fallback gives target holder a receiving line", failures)
+	_assert_equal(str(target_feedback.get("text", "")).find("接住政策文件") >= 0, true, "transfer fallback gives target holder a receiving line", failures)
 	_assert_equal(previous_feedback.get("text", "") != target_feedback.get("text", ""), true, "transfer fallback lines are not duplicated", failures)
 
 

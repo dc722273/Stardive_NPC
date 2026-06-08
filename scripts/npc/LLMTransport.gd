@@ -1,6 +1,8 @@
 extends Node
 class_name LLMTransport
 
+const LLMConfigScript := preload("res://scripts/npc/LLMConfig.gd")
+
 ## Node 唯一持有 HTTPRequest 的地方。LLMClient 是 RefCounted 不能直接发请求，
 ## 所以网络 IO 全部收敛在这里。LLM 只产出文本/JSON，runtime 校验后才采纳。
 ##
@@ -223,7 +225,7 @@ func _model() -> String:
 		var model := str(config.get("model"))
 		if not model.is_empty():
 			return model
-	return "google/gemini-3.1-flash-lite"
+	return LLMConfigScript.DEFAULT_MODEL
 
 
 func _chat_completions_url() -> String:

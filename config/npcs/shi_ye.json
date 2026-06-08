@@ -1,6 +1,10 @@
 {
   "id": "shi_ye",
   "name": "师爷",
+  "spawn": {
+    "enabled": false,
+    "reason": "当前版本不上场，保留角色资料供后续剧情或配置启用"
+  },
   "visual": {
     "markerPath": "res://assets/map_markers/师爷小球.png"
   },

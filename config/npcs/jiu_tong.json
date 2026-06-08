@@ -1,6 +1,10 @@
 {
   "id": "jiu_tong",
   "name": "九筒",
+  "spawn": {
+    "enabled": false,
+    "reason": "当前版本不上场，保留角色资料供后续剧情或配置启用"
+  },
   "visual": {
     "markerPath": "res://assets/map_markers/九筒小球.png"
   },

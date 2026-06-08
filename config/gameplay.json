@@ -27,11 +27,13 @@
       "fencedAreaDragHint": "Drag a 3x3 or larger fenced area",
       "fencedAreaCreated": "Created {place_name}",
       "fencedAreaFailed": "FencedArea failed: {reason}",
-      "fencedAreaFootprint": "FencedArea footprint {rect}"
+      "fencedAreaFootprint": "FencedArea footprint {rect}",
+      "contextExported": "NPC 上下文已导出：{path}",
+      "contextExportFailed": "NPC 上下文导出失败"
     },
     "controls": {
       "collapsedText": "[H] 控制说明",
-      "expandedText": "[H] 收起\nWASD 移动镜头\n空白处左键拖动画布\nF 建造模式\n滚轮 缩放\n左键 选中/拖拽\n右键 丢弃手持物\nCtrl+S 保存 / Ctrl+L 读取"
+      "expandedText": "[H] 收起\nWASD 移动镜头\n空白处左键拖动画布\nF 建造模式\n滚轮 缩放\n左键 选中/拖拽\n右键 丢弃手持物\nCtrl+S 保存 / Ctrl+L 读取\nCtrl+D 导出NPC上下文"
     },
     "feedbackLabel": {
       "position": [16, 16],
@@ -53,7 +55,93 @@
   },
   "chat": {
     "transferMarkers": ["转交给", "送给", "给了", "交给", "递给", "拿给"],
-    "pronounRecipients": ["他", "她", "它", "ta", "TA"]
+    "pronounRecipients": ["你", "您", "他", "她", "它", "ta", "TA"],
+    "maxReportedQuantity": 200
+  },
+  "socialPerceptionConfig": {
+    "enabled": true,
+    "genericObjectLabel": "礼物",
+    "genericObjectWords": ["礼物", "东西", "好处", "筹码", "资源"],
+    "giftMarkers": ["送了礼物", "送礼", "送了东西", "送给", "给了", "递给", "拿给"],
+    "rules": [
+      {
+        "id": "exclusive_attention_challenge",
+        "eventKind": "gift",
+        "targetNpcIds": ["trump"],
+        "watcherAnyTags": ["trump_attention_seeker", "exclusive_political_voice"],
+        "challengerAnyTags": ["exclusive_access_competitor", "wants_presidential_influence", "wealth_to_political_voice"],
+        "challengerRelationDelta": {"attention": 14, "awkward": 14, "suspicion": 30, "debt": 0, "warmth": 0, "fun": 0},
+        "targetRelationDelta": {"attention": 12, "awkward": 12, "suspicion": 6, "debt": 0, "warmth": 0, "fun": 0},
+        "tag": "exclusive_attention_challenge",
+        "responseFocus": "challenger",
+        "threatText": "{actor_name}正在用{object_label}接近{target_name}，这会挤占{observer_name}想独占的注意力和话语权",
+        "visibleReaction": "{observer_name}会把这看成{actor_name}对自己位置的挑战，第一反应是吃醋、警惕，并想把{target_name}的注意力抢回来。",
+        "instruction": "不要只泛泛骂{actor_name}，要把不安、吃醋和抢回{target_name}注意力的意图表现出来，并点明{actor_name}是在挑战你的位置"
+      }
+    ]
+  },
+  "relationshipDecisionConfig": {
+    "enabled": true,
+    "minScore": 35,
+    "cooldownTicks": 90,
+    "rules": [
+      {"field": "warmth", "gte": 35, "motive": "seek_closeness", "intent": "talk_to_npc", "weight": 1.0, "reason": "{npc_id}对{target_id}有好感，主动靠近说话"},
+      {"field": "suspicion", "gte": 30, "motive": "confront", "intent": "talk_to_npc", "weight": 1.25, "reason": "{npc_id}怀疑{target_id}，准备当面试探"},
+      {"field": "awkward", "gte": 35, "motive": "clear_air", "intent": "talk_to_npc", "weight": 1.05, "reason": "{npc_id}觉得和{target_id}之间有尴尬，想把话说开"},
+      {"field": "debt", "gte": 30, "motive": "settle_debt", "intent": "talk_to_npc", "weight": 1.15, "reason": "{npc_id}记着和{target_id}的人情账"},
+      {"field": "fun", "gte": 35, "motive": "tease", "intent": "talk_to_npc", "weight": 1.0, "reason": "{npc_id}觉得{target_id}这里有乐子，又想去逗一句"}
+    ]
+  },
+  "npcExecutionVisual": {
+    "relationTalk": {
+      "enabled": true,
+      "rules": [
+        {"field": "warmth", "gte": 80, "weight": 1.25, "line": "{from_name}主动找{target_name}接话：这次是真把你看重了。"},
+        {"field": "warmth", "gte": 55, "weight": 1.15, "line": "{from_name}走向{target_name}：我现在确实更愿意跟你聊。"},
+        {"field": "debt", "gte": 80, "weight": 1.2, "line": "{from_name}走向{target_name}：这笔人情账得当面说清楚。"},
+        {"field": "debt", "gte": 55, "weight": 1.0, "line": "{from_name}靠近{target_name}：欠你的这份情不能装没看见。"},
+        {"field": "suspicion", "gte": 55, "weight": 1.15, "line": "{from_name}盯住{target_name}：你的来意我得问清楚。"},
+        {"field": "awkward", "gte": 55, "weight": 1.0, "line": "{from_name}靠近{target_name}：这段尴尬不能再糊着。"},
+        {"field": "attention", "gte": 55, "weight": 0.8, "line": "{from_name}走向{target_name}：你已经被我记住了。"},
+        {"field": "fun", "gte": 55, "weight": 0.8, "line": "{from_name}凑近{target_name}：这话柄我可不会放过。"}
+      ]
+    }
+  },
+  "storyArcConfig": {
+    "enabled": true,
+    "maxEventIds": 6,
+    "templates": [
+      {
+        "type": "suspicion_spiral",
+        "participants": 2,
+        "signal": {"relationField": "suspicion", "gte": 30},
+        "heatDelta": 18,
+        "stages": [
+          {"id": "spark", "heat": 20},
+          {"id": "accusation", "heat": 55},
+          {"id": "rupture", "heat": 85}
+        ],
+        "stageTodos": {
+          "accusation": {"intent": "talk_to_npc", "reason": "追问对方刚才到底隐瞒了什么"},
+          "rupture": {"intent": "talk_to_npc", "reason": "把积累的怀疑当面摊开"}
+        }
+      },
+      {
+        "type": "debt_chain",
+        "participants": 2,
+        "signal": {"relationField": "debt", "gte": 30},
+        "heatDelta": 14,
+        "stages": [
+          {"id": "favor", "heat": 20},
+          {"id": "pressure", "heat": 50},
+          {"id": "payoff", "heat": 80}
+        ],
+        "stageTodos": {
+          "pressure": {"intent": "talk_to_npc", "reason": "把这笔人情账说清楚"},
+          "payoff": {"intent": "talk_to_npc", "reason": "要求对方给一个交代"}
+        }
+      }
+    ]
   },
   "free_roam": {
     "enabled": true,
@@ -92,11 +180,11 @@
         "tags": ["人群", "起哄", "谈条件"]
       },
       {
-        "id": "ledger_corner",
-        "name": "账本角",
+        "id": "briefing_corner",
+        "name": "简报角",
         "tile": [13, 13],
         "area": "gate",
-        "tags": ["账本", "算盘", "把柄"]
+        "tags": ["简报", "筹码", "话语权"]
       }
     ],
     "defaultTodo": {
@@ -121,20 +209,32 @@
           "locations": [{ "location": "mansion_porch", "weight": 2 }, { "location": "inner_lawn", "weight": 1 }]
         }
       ],
-      "jiu_tong": [
+      "jd": [
         {
-          "id": "inspect_gate",
-          "label": "观察城门破绽",
-          "motive": "先看清鹅城哪里能进哪里能退",
-          "locations": [{ "location": "front_gate", "weight": 2 }, { "location": "gate_plaza", "weight": 1 }]
+          "id": "shadow_trump",
+          "label": "贴近总统动线",
+          "motive": "争取在特朗普身边保持最高可见度，让下一句政治判断先由自己递上去",
+          "locations": [{ "location": "mansion_porch", "weight": 3 }, { "location": "inner_lawn", "weight": 2 }]
+        },
+        {
+          "id": "draft_talking_points",
+          "label": "整理接话口径",
+          "motive": "把现场变化整理成能独占话语权的下一句建议",
+          "locations": [{ "location": "briefing_corner", "weight": 3 }, { "location": "gate_plaza", "weight": 1 }]
         }
       ],
-      "shi_ye": [
+      "musk": [
         {
-          "id": "ledger_gossip",
-          "label": "翻账本找话头",
-          "motive": "把别人的尴尬记成自己的筹码",
-          "locations": [{ "location": "ledger_corner", "weight": 3 }, { "location": "gate_plaza", "weight": 2 }]
+          "id": "pitch_private_access",
+          "label": "争取单独通道",
+          "motive": "把财富、项目和承诺包装成只对总统开放的影响力入口",
+          "locations": [{ "location": "mansion_porch", "weight": 2 }, { "location": "briefing_corner", "weight": 3 }]
+        },
+        {
+          "id": "scan_for_rivals",
+          "label": "观察竞争者",
+          "motive": "确认谁正在抢走总统注意力，并寻找能压过对方的筹码",
+          "locations": [{ "location": "inner_lawn", "weight": 2 }, { "location": "gate_plaza", "weight": 2 }]
         }
       ]
     }
@@ -452,8 +552,10 @@
       },
       "accept_then_discard": {
         "attention": {"base": 6},
+        "warmth": {"source": "like", "scale": 0.02},
         "awkward": {"base": 8},
         "suspicion": {"base": 4},
+        "debt": {"source": "pressure", "scale": 0.06},
         "fun": {"base": 5}
       }
     }

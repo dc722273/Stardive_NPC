@@ -205,6 +205,10 @@
       "id": "jiu_tong_gun",
       "typeId": "jiu_tong_gun",
       "ownerId": "jiu_tong",
+      "spawn": {
+        "enabled": false,
+        "reason": "九筒当前不上场，专属物品保留资料但不生成到当前场景"
+      },
       "accessRule": {
         "allowedNpcIds": ["jiu_tong"],
         "publicKnown": true,
@@ -246,6 +250,10 @@
       "id": "shiye_ledger",
       "typeId": "shiye_ledger",
       "ownerId": "shi_ye",
+      "spawn": {
+        "enabled": false,
+        "reason": "师爷当前不上场，专属物品保留资料但不生成到当前场景"
+      },
       "accessRule": {
         "allowedNpcIds": ["shi_ye"],
         "publicKnown": true,

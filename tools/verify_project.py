@@ -312,6 +312,19 @@ NPC_EXPECTATIONS = {
             "request_replan",
         ],
     },
+    "scripts/npc/StakeholderPerceptionService.gd": {
+        "class_name": "StakeholderPerceptionService",
+        "fields": [
+            "entity_registry",
+            "gameplay_config",
+            "config",
+        ],
+        "methods": [
+            "configure",
+            "parse_chat_social_fact",
+            "apply_observer_perception",
+        ],
+    },
 }
 
 REQUIRED_FILES = [

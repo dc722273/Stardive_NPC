@@ -12,6 +12,7 @@ const LLMClientScript := preload("res://scripts/npc/LLMClient.gd")
 const NPCActionSchedulerScript := preload("res://scripts/npc/NPCActionScheduler.gd")
 const NPCFeedbackBuilderScript := preload("res://scripts/npc/NPCFeedbackBuilder.gd")
 const NPCPerformanceDirectorScript := preload("res://scripts/npc/NPCPerformanceDirector.gd")
+const NPCExecutionLoopScript := preload("res://scripts/npc/NPCExecutionLoop.gd")
 const NPCMoverScript := preload("res://scripts/npc/NPCMover.gd")
 const TodoExecutorScript := preload("res://scripts/npc/TodoExecutor.gd")
 const InteractionEventLogScript := preload("res://scripts/world/InteractionEventLog.gd")
@@ -19,7 +20,10 @@ const GridPathfinderScript := preload("res://scripts/world/GridPathfinder.gd")
 const WorldEntityRegistryScript := preload("res://scripts/world/WorldEntityRegistry.gd")
 const InteractionDeltaRulesScript := preload("res://scripts/world/InteractionDeltaRules.gd")
 const WellbeingRulesScript := preload("res://scripts/world/WellbeingRules.gd")
+const RelationshipDecisionServiceScript := preload("res://scripts/npc/RelationshipDecisionService.gd")
+const StoryArcRegistryScript := preload("res://scripts/world/StoryArcRegistry.gd")
 const MainGameScript := preload("res://scripts/MainGame.gd")
+const NPCContextDebugExporterScript := preload("res://scripts/debug/NPCContextDebugExporter.gd")
 const EntityVisualLayerScript := preload("res://scripts/ui/EntityVisualLayer.gd")
 const HeldItemLayoutScript := preload("res://scripts/ui/HeldItemLayout.gd")
 const NPCChatPanelScript := preload("res://scripts/ui/NPCChatPanel.gd")
@@ -44,7 +48,10 @@ func run() -> Array:
 	_test_right_click_discard_drops_all_held_items_and_records_events(failures)
 	_test_drag_hit_prefers_visible_held_item(failures)
 	_test_release_held_item_to_other_npc_records_transfer_event(failures)
+	_test_main_game_gold_cup_transfer_surfaces_relation_contract(failures)
 	_test_chat_reported_item_transfer_updates_world_and_memory(failures)
+	_test_chat_reported_hundred_gold_cups_changes_trump_view(failures)
+	_test_chat_social_gift_triggers_jd_jealousy_context(failures)
 	_test_repeated_rejected_item_is_auto_dropped_by_npc(failures)
 	_test_feedback_pause_blocks_npc_movement_and_new_decisions(failures)
 	_test_speech_bubble_duration_and_font_size(failures)
@@ -60,22 +67,30 @@ func run() -> Array:
 	_test_placement_path_impact_replans_or_blocks_todo(failures)
 	_test_daily_todo_planner_validation_and_fallback(failures)
 	_test_llm_client_generation_guard_and_cancel(failures)
+	_test_npc_context_debug_exporter_shows_actual_llm_context(failures)
 	_test_action_scheduler_lane_locks(failures)
 	_test_feedback_builder_binds_event_context(failures)
 	_test_feedback_builder_chat_events_have_fallbacks(failures)
 	_test_todo_executor_blocks_and_adds_fallback(failures)
+	_test_npc_autonomous_todo_completion_updates_experience_delta(failures)
+	_test_npc_blocked_todo_updates_experience_delta(failures)
+	_test_relationship_memory_creates_emergent_todo(failures)
+	_test_relationship_todo_preempts_low_priority_daily_todo(failures)
+	_test_relationship_todo_bubble_uses_relation_memory_not_observer_reason(failures)
+	_test_story_arc_escalates_events_and_creates_story_todo(failures)
 	_test_npc_chat_panel_preloads(failures)
 	_test_main_game_feedback_adds_final_lines_to_chat_history(failures)
 	_test_main_game_records_npc_visible_memory(failures)
 	_test_npc_mover_replans_when_path_is_invalidated(failures)
 	_test_position_is_source_of_truth(failures)
-	_test_mvp_object_pool_has_six_social_pressure_items(failures)
+	_test_mvp_object_pool_preserves_archived_items_but_spawns_four(failures)
 	_test_wellbeing_rules_use_existing_events_and_item_social(failures)
 	_test_wellbeing_rules_cover_mvp_object_pool_interventions(failures)
 	_test_performance_director_sanitizes_to_catalog_ids(failures)
-	_test_training_gun_to_shiye_creates_preemptive_body_gag(failures)
-	_test_gold_cup_to_shiye_turns_liking_into_relation_debt(failures)
-	_test_coke_ping_pong_between_trump_and_jiu_tong_creates_relation_gag(failures)
+	_test_training_seal_to_jd_creates_preemptive_body_gag(failures)
+	_test_gold_cup_to_musk_turns_liking_into_relation_debt(failures)
+	_test_hundred_gold_cups_to_trump_saturates_relation_memory(failures)
+	_test_coke_ping_pong_between_trump_and_musk_creates_relation_gag(failures)
 	_test_gift_stance_handles_player_ground_gift_without_npc_relation(failures)
 	_test_gift_relation_requires_npc_attribution(failures)
 	_test_interaction_delta_updates_object_and_relation_memory(failures)
@@ -176,17 +191,19 @@ func _test_item_type_defaults_and_social_override(failures: Array) -> void:
 func _test_npc_nested_round_trip(failures: Array) -> void:
 	var npc = NPCStateScript.from_dict({
 		"id": "npc_jiutong",
-		"name": "Jiu Tong",
+		"name": "JD",
 		"traits": {"tell": 40, "face": 50, "control": 60, "caution": 70, "play": 30},
 		"style": {"lineMode": "strategic_observer"},
 		"current_cell": {"x": 1, "y": 2},
+		"runtime": {"experienceMemory": {"curiosity": 7, "topIntents": [{"intent": "inspect_item", "score": 4}]}},
 		"todo_list": [{"id": "todo_1", "intent": "wander"}],
 		"recent_events": [{"id": "event_1", "type": "player_drop_item_on_npc"}],
 	})
 	_assert_equal(npc.to_dict()["current_cell"], {"x": 1, "y": 2}, "NPCState keeps current cell", failures)
-	_assert_equal(npc.to_dict()["name"], "Jiu Tong", "NPCState serializes profile name", failures)
+	_assert_equal(npc.to_dict()["name"], "JD", "NPCState serializes profile name", failures)
 	_assert_equal(npc.todo_list.size(), 1, "NPCState loads nested todos", failures)
 	_assert_equal(npc.recent_events.size(), 1, "NPCState loads nested events", failures)
+	_assert_equal(npc.to_dict()["runtime"]["experienceMemory"]["curiosity"], 7, "NPCState serializes experience memory", failures)
 	var malformed = NPCStateScript.from_dict({"todo_list": null, "recent_events": "bad"})
 	_assert_equal(malformed.todo_list.size(), 0, "NPCState ignores malformed todo list", failures)
 	_assert_equal(malformed.recent_events.size(), 0, "NPCState ignores malformed recent events", failures)
@@ -303,12 +320,51 @@ func _test_release_held_item_to_other_npc_records_transfer_event(failures: Array
 	game.free()
 
 
+func _test_main_game_gold_cup_transfer_surfaces_relation_contract(failures: Array) -> void:
+	var game = MainGameScript.new()
+	var registry = WorldEntityRegistryScript.new()
+	registry.set_map_bounds(Rect2i(0, 0, 8, 8))
+	var event_log = InteractionEventLogScript.new()
+	var object_types := _core_validation_object_types()
+	registry.set_object_types(object_types)
+	var musk = NPCStateScript.from_dict(_core_validation_npc("musk"))
+	var trump = NPCStateScript.from_dict(_core_validation_npc("trump"))
+	musk.position = Vector2(160.0, 160.0)
+	trump.position = Vector2(240.0, 160.0)
+	registry.add_npc(musk)
+	registry.add_npc(trump)
+	var cup = ItemStateScript.from_dict({"id": "gold_cup", "typeId": "gold_cup", "currentAnchor": {"type": "npc", "npcId": "musk"}}, object_types)
+	registry.add_item(cup)
+	game.entity_registry = registry
+	game.event_log = event_log
+	game.gameplay_config = _gameplay_config()
+
+	var payload: Dictionary = {}
+	for index in range(100):
+		cup.current_anchor = {"type": "npc", "npcId": "musk"}
+		payload = game._item_event_payload(&"gold_cup", &"trump", &"musk")
+	var relation: Dictionary = registry.relation_memory(&"trump", &"musk")
+	var event = event_log.record(&"player_transfer_item_between_npcs", &"gold_cup", &"trump", &"npc", trump.current_cell, payload, &"player", 300)
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(registry, null, null, event_log)
+	var feedback: Dictionary = builder.build_feedback(event, trump, {"entity_registry": registry, "event_log": event_log})
+	var text := str(feedback.get("text", ""))
+
+	_assert_equal(payload.get("relation_memory_updates", []).is_empty(), false, "MainGame payload carries relation updates for NPC-attributed gold cup transfer", failures)
+	_assert_equal(int(relation.get("warmth", 0)), 100, "MainGame gold cup transfer saturates Trump warmth toward Musk", failures)
+	_assert_equal(int(relation.get("debt", 0)), 100, "MainGame gold cup transfer saturates Trump debt toward Musk", failures)
+	_assert_equal(str(feedback.get("response_contract", {})).contains("relation_shift"), true, "MainGame feedback gets relation-shift contract from transfer payload", failures)
+	_assert_equal(text.find("认可") >= 0 or text.find("人情") >= 0 or text.find("期待") >= 0, true, "MainGame feedback text makes strong relation change visible", failures)
+	_assert_equal(text.find("观察") < 0 and text.find("看看") < 0, true, "MainGame feedback no longer falls back to vague observation wording", failures)
+	game.free()
+
+
 func _test_chat_reported_item_transfer_updates_world_and_memory(failures: Array) -> void:
 	var context := _make_main_game_drag_context()
 	var game = context["game"]
 	var registry = game.entity_registry
-	registry.npcs[&"npc_alpha"].name = "九筒"
-	registry.npcs[&"npc_alpha"].aliases = ["九筒"]
+	registry.npcs[&"npc_alpha"].name = "musk"
+	registry.npcs[&"npc_alpha"].aliases = ["musk", "马斯克"]
 	registry.npcs[&"npc_beta"].name = "川普"
 	registry.npcs[&"npc_beta"].aliases = ["川普"]
 	registry.items[&"item_cola"].name = "一瓶可乐"
@@ -316,9 +372,9 @@ func _test_chat_reported_item_transfer_updates_world_and_memory(failures: Array)
 	registry.items[&"item_cola"].owner_id = &"npc_alpha"
 	registry.object_types[&"cola"] = {"name": "可乐", "aliases": ["一瓶可乐", "可乐"]}
 
-	var transfer: Dictionary = game._parse_chat_transfer(&"npc_beta", "九筒送给他一瓶可乐")
+	var transfer: Dictionary = game._parse_chat_transfer(&"npc_beta", "musk送给他一瓶可乐")
 	_assert_equal(transfer.get("ok", false), true, "Chat transfer parser accepts pronoun recipient", failures)
-	var event = game._apply_chat_transfer_event(&"npc_beta", "九筒送给他一瓶可乐", transfer)
+	var event = game._apply_chat_transfer_event(&"npc_beta", "musk送给他一瓶可乐", transfer)
 
 	_assert_equal(registry.items[&"item_cola"].anchor_npc_id(), &"npc_beta", "Chat reported transfer moves item to target NPC", failures)
 	_assert_equal(event.type, &"player_chat_reported_item_transfer", "Chat reported transfer records a world event", failures)
@@ -326,6 +382,76 @@ func _test_chat_reported_item_transfer_updates_world_and_memory(failures: Array)
 	_assert_equal(event.payload.get("interaction_trace", {}).get("countInWindow", 0), 1, "Chat transfer advances item interaction trace", failures)
 	_assert_equal(event.payload.get("performance_plan", {}).has("pattern"), true, "Chat transfer includes performance plan for NPC reaction", failures)
 	_assert_equal(str(event.payload.get("scene_seed", {}).get("visible_topic", "")).find("已按这句话") >= 0, true, "Chat transfer tells feedback builder the world state changed", failures)
+	game.free()
+
+
+func _test_chat_reported_hundred_gold_cups_changes_trump_view(failures: Array) -> void:
+	var game = MainGameScript.new()
+	var registry = WorldEntityRegistryScript.new()
+	registry.set_map_bounds(Rect2i(0, 0, 8, 8))
+	var event_log = InteractionEventLogScript.new()
+	var object_types := _core_validation_object_types()
+	registry.set_object_types(object_types)
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("musk")))
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("trump")))
+	var cup = ItemStateScript.from_dict({"id": "gold_cup", "typeId": "gold_cup", "currentAnchor": {"type": "ground"}}, object_types)
+	registry.add_item(cup)
+	game.entity_registry = registry
+	game.event_log = event_log
+	game.gameplay_config = _gameplay_config()
+	game.tick = 500
+
+	var transfer: Dictionary = game._parse_chat_transfer(&"trump", "musk送给你100个金杯")
+	_assert_equal(transfer.get("ok", false), true, "Reported transfer parses second-person recipient", failures)
+	_assert_equal(int(transfer.get("quantity", 0)), 100, "Reported transfer parses Arabic quantity", failures)
+	var transfer_event = game._apply_chat_transfer_event(&"trump", "musk送给你100个金杯", transfer)
+	var relation: Dictionary = registry.relation_memory(&"trump", &"musk")
+	_assert_equal(transfer_event.type, &"player_chat_reported_item_transfer", "Quantity report still records transfer event", failures)
+	_assert_equal(int(transfer_event.payload.get("reported_quantity", 1)), 100, "Transfer payload stores reported quantity without duplicating item data", failures)
+	_assert_equal(int(relation.get("warmth", 0)), 100, "100 reported gold cups saturate Trump warmth toward Musk", failures)
+	_assert_equal(int(relation.get("debt", 0)), 100, "100 reported gold cups saturate Trump debt toward Musk", failures)
+
+	var question_event = game._record_direct_chat_event(&"trump", "你觉得musk怎么样")
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(registry, null, null, event_log)
+	var feedback: Dictionary = builder.build_feedback(question_event, registry.npcs[&"trump"], {"entity_registry": registry, "event_log": event_log})
+	var text := str(feedback.get("text", ""))
+	_assert_equal(text.find("认可") >= 0 or text.find("期待") >= 0 or text.find("人情") >= 0, true, "Trump relation answer reflects reported hundred gold cups", failures)
+	_assert_equal(text.find("没对他下") < 0 and text.find("太早") < 0, true, "Trump relation answer no longer stays undecided after 100 cups", failures)
+	game.free()
+
+
+func _test_chat_social_gift_triggers_jd_jealousy_context(failures: Array) -> void:
+	var game = MainGameScript.new()
+	var registry = WorldEntityRegistryScript.new()
+	registry.set_map_bounds(Rect2i(0, 0, 8, 8))
+	var event_log = InteractionEventLogScript.new()
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("jd")))
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("musk")))
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("trump")))
+	game.entity_registry = registry
+	game.event_log = event_log
+	game.gameplay_config = _gameplay_config()
+	game.tick = 610
+
+	var event = game._record_direct_chat_event(&"jd", "马斯克给特朗普送了礼物你怎么看")
+	var perception: Dictionary = event.payload.get("stakeholder_perception", {})
+	var relation_to_musk: Dictionary = registry.relation_memory(&"jd", &"musk")
+	var relation_to_trump: Dictionary = registry.relation_memory(&"jd", &"trump")
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(registry, null, null, event_log)
+	var feedback: Dictionary = builder.build_feedback(event, registry.npcs[&"jd"], {"entity_registry": registry, "event_log": event_log})
+	var text := str(feedback.get("text", ""))
+	var messages := builder._build_feedback_messages(feedback, event, registry.npcs[&"jd"])
+	var prompt_text := str(messages)
+
+	_assert_equal(perception.is_empty(), false, "Generic gift chat creates stakeholder perception", failures)
+	_assert_equal(str(perception.get("fact", {}).get("actorNpcId", "")), "musk", "Stakeholder perception identifies Musk as challenger", failures)
+	_assert_equal(str(perception.get("fact", {}).get("targetNpcId", "")), "trump", "Stakeholder perception identifies Trump as attention target", failures)
+	_assert_equal(int(relation_to_musk.get("suspicion", 0)) >= 30, true, "JD suspicion toward Musk reaches relationship-decision threshold after attention challenge", failures)
+	_assert_equal(int(relation_to_trump.get("awkward", 0)) >= 10, true, "JD relation toward Trump records attention pressure", failures)
+	_assert_equal(prompt_text.find("social perception") >= 0 and prompt_text.find("挑战你的位置") >= 0, true, "LLM prompt explicitly surfaces reusable jealousy context", failures)
+	_assert_equal(text.find("挑战") >= 0 or text.find("注意力") >= 0 or text.find("话语权") >= 0 or text.find("吃醋") >= 0, true, "Fallback visibly expresses jealousy/position threat", failures)
 	game.free()
 
 
@@ -348,8 +474,8 @@ func _test_repeated_rejected_item_is_auto_dropped_by_npc(failures: Array) -> voi
 	registry.set_object_types(object_types)
 	registry.add_npc(NPCStateScript.from_dict({"id": "trump", "name": "Trump", "position": {"x": 64.0, "y": 64.0}}))
 	registry.add_npc(NPCStateScript.from_dict({
-		"id": "jiu_tong",
-		"name": "Jiu Tong",
+		"id": "npc_receiver",
+		"name": "Receiver",
 		"position": {"x": 160.0, "y": 160.0},
 		"traits": {"caution": 82, "face": 65, "control": 52, "play": 36, "tell": 42},
 		"tags": ["avoid_responsibility"],
@@ -386,9 +512,9 @@ func _test_repeated_rejected_item_is_auto_dropped_by_npc(failures: Array) -> voi
 
 	var cautious_auto_drop := {}
 	for i in range(2):
-		_assert_equal(registry.give_item_to_npc(&"sealed_brief", &"jiu_tong"), true, "Repeated rejected item can be attached before auto rule", failures)
-		var payload: Dictionary = game._item_event_payload(&"sealed_brief", &"jiu_tong", &"trump")
-		var auto_drop: Dictionary = game._maybe_auto_drop_rejected_item(&"sealed_brief", &"jiu_tong", payload)
+		_assert_equal(registry.give_item_to_npc(&"sealed_brief", &"npc_receiver"), true, "Repeated rejected item can be attached before auto rule", failures)
+		var payload: Dictionary = game._item_event_payload(&"sealed_brief", &"npc_receiver", &"trump")
+		var auto_drop: Dictionary = game._maybe_auto_drop_rejected_item(&"sealed_brief", &"npc_receiver", payload)
 		if i == 0:
 			_assert_equal(auto_drop.is_empty(), true, "First rejected attach is not auto-dropped for cautious NPC", failures)
 		if i == 1:
@@ -662,6 +788,42 @@ func _test_llm_client_generation_guard_and_cancel(failures: Array) -> void:
 	_assert_equal(cancelled_result["committed"], false, "LLMClient does not commit cancelled operation", failures)
 
 
+func _test_npc_context_debug_exporter_shows_actual_llm_context(failures: Array) -> void:
+	var world := _make_npc_loop_world()
+	var registry = world["entity_registry"]
+	var jd = NPCStateScript.from_dict({
+		"id": "jd",
+		"name": "JD",
+		"tags": ["你不希望别人跟川普有亲近的关系", "当别人跟川普有亲近关系时，你会吃醋并且表现在语言和行为上"],
+		"current_cell": {"x": 2, "y": 2},
+	})
+	var trump = NPCStateScript.from_dict({"id": "trump", "name": "川普", "aliases": ["川普"], "current_cell": {"x": 3, "y": 2}})
+	registry.add_npc(jd)
+	registry.add_npc(trump)
+	var event = world["event_log"].record(&"player_chat_to_npc", &"trump", &"trump", &"npc", Vector2i(3, 2), {"player_message": "你怎么看musk？"}, &"player", 7)
+	var planner = DailyTodoPlannerScript.new()
+	planner.configure(registry, world["place_registry"], world["pathfinder"], world["event_log"])
+	var builder = NPCFeedbackBuilderScript.new()
+	builder.configure(registry, world["place_registry"], world["pathfinder"], world["event_log"])
+	var exporter = NPCContextDebugExporterScript.new()
+	exporter.configure({
+		"entity_registry": registry,
+		"place_registry": world["place_registry"],
+		"pathfinder": world["pathfinder"],
+		"event_log": world["event_log"],
+		"daily_todo_planner": planner,
+		"npc_feedback_builder": builder,
+		"tick": 7,
+	})
+	var dump: Dictionary = exporter.build_dump()
+	var jd_dump := _npc_dump_by_id(dump, "jd")
+	var trump_dump := _npc_dump_by_id(dump, "trump")
+	_assert_equal(not jd_dump.is_empty(), true, "Context exporter includes JD", failures)
+	_assert_equal(str(jd_dump.get("planner_messages", [])).find("吃醋") >= 0, true, "JD planner context includes jealousy tag", failures)
+	_assert_equal(str(trump_dump.get("feedback_messages_for_latest_event", [])).find("吃醋") < 0, true, "Trump feedback context does not inherit JD-only tag", failures)
+	_assert_equal(str(trump_dump.get("feedback_messages_for_latest_event", [])).find("你怎么看musk？") >= 0, true, "Trump feedback context includes current player message", failures)
+
+
 func _test_action_scheduler_lane_locks(failures: Array) -> void:
 	var scheduler = NPCActionSchedulerScript.new()
 	var move_first: Dictionary = scheduler.start_action({"id": &"move_1", "npc_id": &"npc_alpha", "lane": &"movement"})
@@ -697,10 +859,10 @@ func _test_feedback_builder_chat_events_have_fallbacks(failures: Array) -> void:
 		"primary_entity_id": "npc_alpha",
 		"target_entity_id": "npc_alpha",
 		"target_type": "npc",
-		"payload": {"player_message": "九筒送给你一瓶可乐"},
+		"payload": {"player_message": "musk送给你一瓶可乐"},
 	})
 	var chat_feedback: Dictionary = builder.build_feedback(chat_event, npc, {})
-	_assert_equal(str(chat_feedback.get("text", "")).find("九筒送给你一瓶可乐") >= 0, true, "Chat fallback includes player message", failures)
+	_assert_equal(str(chat_feedback.get("text", "")).find("musk送给你一瓶可乐") >= 0, true, "Chat fallback includes player message", failures)
 
 	var transfer_event = InteractionEventScript.from_dict({
 		"type": "player_chat_reported_item_transfer",
@@ -708,7 +870,7 @@ func _test_feedback_builder_chat_events_have_fallbacks(failures: Array) -> void:
 		"primary_entity_id": "diet_coke",
 		"target_entity_id": "npc_alpha",
 		"target_type": "npc",
-		"payload": {"item_name": "健怡可乐", "previousAnchorNpcName": "九筒"},
+		"payload": {"item_name": "健怡可乐", "previousAnchorNpcName": "musk"},
 	})
 	var transfer_feedback: Dictionary = builder.build_feedback(transfer_event, npc, {})
 	_assert_equal(str(transfer_feedback.get("text", "")).find("健怡可乐") >= 0, true, "Reported transfer fallback includes item", failures)
@@ -727,6 +889,161 @@ func _test_todo_executor_blocks_and_adds_fallback(failures: Array) -> void:
 	_assert_equal(todo.status, &"BLOCKED", "TodoExecutor mutates todo status to BLOCKED", failures)
 	_assert_equal(npc.todo_list.size(), 2, "TodoExecutor appends fallback todo", failures)
 	_assert_equal(npc.todo_list[1].intent, &"wander", "TodoExecutor fallback todo is wander", failures)
+
+
+func _test_npc_autonomous_todo_completion_updates_experience_delta(failures: Array) -> void:
+	var world := _make_npc_loop_world()
+	var game = MainGameScript.new()
+	game.entity_registry = world["entity_registry"]
+	game.place_registry = world["place_registry"]
+	game.pathfinder = world["pathfinder"]
+	game.event_log = world["event_log"]
+	game.gameplay_config = _gameplay_config()
+	game.tick = 12
+	var npc = world["npc"]
+	var todo = TodoItemScript.from_dict({"id": "todo_talk", "intent": "talk_to_npc", "target_npc_id": "npc_beta", "reason": "主动寒暄", "status": "active"})
+
+	var event = game._record_npc_todo_experience(npc, todo, game._npc_todo_event_type(todo), &"", true)
+
+	_assert_equal(event != null, true, "Autonomous todo completion records an event", failures)
+	_assert_equal(event.type, &"npc_talked_to_npc", "Talk todo records semantic NPC event type", failures)
+	_assert_equal(event.actor_id, &"npc_alpha", "Autonomous event actor is the NPC itself", failures)
+	_assert_equal(event.payload.has("npc_experience_delta"), true, "Autonomous event carries NPC experience delta", failures)
+	_assert_equal(int(npc.experience_memory.get("social_charge", 0)) > 0, true, "Talking autonomously raises NPC social charge", failures)
+	_assert_equal(npc.performance_state, "socializing", "Autonomous experience updates performance state", failures)
+	_assert_equal(world["entity_registry"].relation_memory(&"npc_alpha", &"npc_beta").is_empty(), false, "Talking autonomously updates relation memory", failures)
+	game.free()
+
+
+func _test_npc_blocked_todo_updates_experience_delta(failures: Array) -> void:
+	var world := _make_npc_loop_world()
+	var game = MainGameScript.new()
+	game.entity_registry = world["entity_registry"]
+	game.place_registry = world["place_registry"]
+	game.pathfinder = world["pathfinder"]
+	game.event_log = world["event_log"]
+	game.gameplay_config = _gameplay_config()
+	game.tick = 13
+	var npc = world["npc"]
+	var todo = TodoItemScript.from_dict({"id": "todo_missing", "intent": "visit_place", "target_place_id": "missing", "reason": "找不到地方", "status": "active"})
+
+	var event = game._record_npc_todo_experience(npc, todo, &"npc_todo_blocked", &"missing_target", false)
+
+	_assert_equal(event != null, true, "Blocked autonomous todo records an event", failures)
+	_assert_equal(event.type, &"npc_todo_blocked", "Blocked todo records blocked event type", failures)
+	_assert_equal(int(npc.experience_memory.get("frustration", 0)) > 0, true, "Blocked todo raises NPC frustration", failures)
+	_assert_equal(npc.performance_state, "blocked", "Blocked todo updates performance state", failures)
+	_assert_equal(str(event.payload.get("npc_experience_delta", {}).get("reason", "")), "missing_target", "Blocked event payload carries failure reason", failures)
+	game.free()
+
+
+func _test_relationship_memory_creates_emergent_todo(failures: Array) -> void:
+	var world := _make_npc_loop_world()
+	var registry = world["entity_registry"]
+	var npc = world["npc"]
+	registry.apply_relation_delta(&"npc_alpha", &"npc_beta", {"suspicion": 40, "attention": 10}, "test_suspicion", 1)
+	var service = RelationshipDecisionServiceScript.new()
+	service.configure(_gameplay_config())
+
+	var todo = service.maybe_create_todo(npc, registry, 200)
+
+	_assert_equal(todo != null, true, "Relationship memory creates emergent todo for idle NPC", failures)
+	_assert_equal(todo.intent, &"talk_to_npc", "Relationship motive creates talk todo", failures)
+	_assert_equal(todo.target_npc_id, &"npc_beta", "Relationship todo targets remembered NPC", failures)
+	_assert_equal(str(todo.reason).find("怀疑") >= 0, true, "Relationship todo reason explains motive", failures)
+
+
+func _test_relationship_todo_preempts_low_priority_daily_todo(failures: Array) -> void:
+	var world := _make_npc_loop_world()
+	var registry = world["entity_registry"]
+	var npc = world["npc"]
+	npc.todo_list = [TodoItemScript.from_dict({"id": "todo_wander", "intent": "wander", "reason": "普通闲逛", "priority": 0, "status": "pending"})]
+	registry.apply_relation_delta(&"npc_alpha", &"npc_beta", {"debt": 80, "attention": 20}, "gold_cup_pressure", 1)
+	var service = RelationshipDecisionServiceScript.new()
+	service.configure(_gameplay_config())
+	var executor = TodoExecutorScript.new()
+	executor.configure(registry, world["place_registry"], world["pathfinder"], world["event_log"])
+	var loop = NPCExecutionLoopScript.new()
+	loop.configure({
+		"entity_registry": registry,
+		"place_registry": world["place_registry"],
+		"pathfinder": world["pathfinder"],
+		"event_log": world["event_log"],
+		"todo_executor": executor,
+		"relationship_decision_service": service,
+		"gameplay_config": _gameplay_config(),
+	})
+
+	loop.tick(200)
+
+	var active_todo = null
+	for todo in npc.todo_list:
+		if todo != null and StringName(todo.status) == &"active":
+			active_todo = todo
+			break
+	_assert_equal(active_todo != null, true, "Relationship todo can interrupt queued low-priority daily todo", failures)
+	_assert_equal(active_todo.intent, &"talk_to_npc", "Relationship pressure starts a talk todo", failures)
+	_assert_equal(active_todo.target_npc_id, &"npc_beta", "Preempting relationship todo targets remembered NPC", failures)
+	_assert_equal(str(active_todo.id).begins_with("rel_"), true, "Preempting todo is marked as relationship generated", failures)
+	_assert_equal(npc.todo_list[0].status, &"pending", "Original low-priority daily todo remains queued", failures)
+
+
+func _test_relationship_todo_bubble_uses_relation_memory_not_observer_reason(failures: Array) -> void:
+	var world := _make_npc_loop_world()
+	var registry = world["entity_registry"]
+	var npc = world["npc"]
+	registry.npcs[&"npc_alpha"].name = "川普"
+	registry.npcs[&"npc_beta"].name = "musk"
+	npc.todo_list = [TodoItemScript.from_dict({"id": "todo_wander", "intent": "wander", "reason": "普通闲逛", "priority": 0, "status": "pending"})]
+	registry.apply_relation_delta(&"npc_alpha", &"npc_beta", {"attention": 100, "warmth": 100, "debt": 100}, "gold_cup_pressure", 1)
+	var service = RelationshipDecisionServiceScript.new()
+	service.configure(_gameplay_config())
+	var executor = TodoExecutorScript.new()
+	executor.configure(registry, world["place_registry"], world["pathfinder"], world["event_log"])
+	var bubbles: Array = []
+	var loop = NPCExecutionLoopScript.new()
+	loop.configure({
+		"entity_registry": registry,
+		"place_registry": world["place_registry"],
+		"pathfinder": world["pathfinder"],
+		"event_log": world["event_log"],
+		"todo_executor": executor,
+		"relationship_decision_service": service,
+		"gameplay_config": _gameplay_config(),
+		"visual_syncer": func(_npc, bubble_text: String) -> void: bubbles.append(bubble_text),
+	})
+
+	loop.tick(200)
+
+	_assert_equal(bubbles.is_empty(), false, "Relationship todo emits a visible bubble when it starts", failures)
+	if not bubbles.is_empty():
+		var text := str(bubbles[0])
+		_assert_equal(text.find("看重") >= 0 or text.find("人情账") >= 0 or text.find("愿意") >= 0, true, "Relationship todo bubble expresses concrete relation stance", failures)
+		_assert_equal(text.find("观察") < 0 and text.find("看看") < 0, true, "Relationship todo bubble does not fall back to vague observer wording", failures)
+
+
+func _test_story_arc_escalates_events_and_creates_story_todo(failures: Array) -> void:
+	var world := _make_npc_loop_world()
+	var registry = world["entity_registry"]
+	var npc = world["npc"]
+	registry.apply_relation_delta(&"npc_alpha", &"npc_beta", {"suspicion": 40}, "test_suspicion", 1)
+	var story = StoryArcRegistryScript.new()
+	story.configure(_gameplay_config())
+	var event_one = world["event_log"].record(&"npc_talked_to_npc", &"npc_alpha", &"npc_beta", &"npc", Vector2i(1, 1), {"npc_ids": [&"npc_alpha", &"npc_beta"]}, &"npc_alpha", 10)
+	var event_two = world["event_log"].record(&"npc_talked_to_npc", &"npc_alpha", &"npc_beta", &"npc", Vector2i(1, 1), {"npc_ids": [&"npc_alpha", &"npc_beta"]}, &"npc_alpha", 20)
+	var event_three = world["event_log"].record(&"npc_talked_to_npc", &"npc_alpha", &"npc_beta", &"npc", Vector2i(1, 1), {"npc_ids": [&"npc_alpha", &"npc_beta"]}, &"npc_alpha", 30)
+	var event_four = world["event_log"].record(&"npc_talked_to_npc", &"npc_alpha", &"npc_beta", &"npc", Vector2i(1, 1), {"npc_ids": [&"npc_alpha", &"npc_beta"]}, &"npc_alpha", 40)
+
+	story.observe_event(event_one, registry, 10)
+	story.observe_event(event_two, registry, 20)
+	story.observe_event(event_three, registry, 30)
+	var updates: Array = story.observe_event(event_four, registry, 40)
+	var todo = story.pending_story_todo(npc, registry, 41)
+
+	_assert_equal(updates.is_empty(), false, "Story arc observes repeated relation events", failures)
+	_assert_equal(str(updates[0].get("stage", "")), "accusation", "Story arc escalates to accusation stage", failures)
+	_assert_equal(todo != null, true, "Escalated story arc creates story todo", failures)
+	_assert_equal(todo.target_npc_id, &"npc_beta", "Story todo targets other participant", failures)
 
 
 func _test_npc_chat_panel_preloads(failures: Array) -> void:
@@ -816,29 +1133,28 @@ func _test_position_is_source_of_truth(failures: Array) -> void:
 	_assert_equal(item.current_cell, Vector2i(0, 0), "item current_cell derived", failures)
 
 
-func _test_mvp_object_pool_has_six_social_pressure_items(failures: Array) -> void:
+func _test_mvp_object_pool_preserves_archived_items_but_spawns_four(failures: Array) -> void:
 	var bundle: Dictionary = ConfigLoaderScript.load_item_bundle()
 	var types: Dictionary = bundle.get("objectTypes", {})
 	var expected_ids := [&"diet_coke", &"jiu_tong_gun", &"gold_cup", &"shiye_ledger", &"dollars_stack", &"seal_strip"]
-	_assert_equal(types.size(), expected_ids.size(), "MVP object pool contains exactly six configured object types", failures)
+	_assert_equal(types.size(), expected_ids.size(), "MVP object pool preserves all configured object types", failures)
 	for object_id in expected_ids:
 		_assert_equal(types.has(str(object_id)), true, "MVP object type exists: %s" % str(object_id), failures)
-	var ledger: Dictionary = types.get("shiye_ledger", {})
-	_assert_equal(ledger.get("classification", {}).get("subtype", ""), "ledger", "Ledger subtype is stored without category prefix", failures)
-	_assert_equal(ledger.get("defaultAffordance", {}).get("discardable", true), false, "Shiye ledger is not casually discardable", failures)
-	var gun: Dictionary = types.get("jiu_tong_gun", {})
-	_assert_equal(int(gun.get("defaultSocial", {}).get("danger", 0)) >= 90, true, "Jiu Tong gun carries high danger pressure", failures)
 	var objects: Array = bundle.get("objects", [])
 	var object_by_id := {}
 	for raw_object in objects:
 		if raw_object is Dictionary:
 			object_by_id[StringName(raw_object.get("id", ""))] = raw_object
 	_assert_equal(object_by_id.get(&"diet_coke", {}).get("ownerId", ""), "trump", "Diet coke has social owner instead of hardcoded reaction owner", failures)
-	_assert_equal(object_by_id.get(&"jiu_tong_gun", {}).get("ownerId", ""), "jiu_tong", "Gun owner remains Jiu Tong", failures)
-	_assert_equal(object_by_id.get(&"shiye_ledger", {}).get("ownerId", ""), "shi_ye", "Ledger owner is Shiye", failures)
+	_assert_equal(object_by_id.get(&"jiu_tong_gun", {}).get("ownerId", ""), "jiu_tong", "Gun owner remains Jiu Tong in archived config", failures)
+	_assert_equal(object_by_id.get(&"shiye_ledger", {}).get("ownerId", ""), "shi_ye", "Ledger owner remains Shiye in archived config", failures)
+	_assert_equal(object_by_id.get(&"jiu_tong_gun", {}).get("spawn", {}).get("enabled", true), false, "Jiu Tong gun config is preserved but not spawned", failures)
+	_assert_equal(object_by_id.get(&"shiye_ledger", {}).get("spawn", {}).get("enabled", true), false, "Shiye ledger config is preserved but not spawned", failures)
 	var ground_cells := {}
 	for object_id in expected_ids:
 		var raw_object: Dictionary = object_by_id.get(object_id, {})
+		if raw_object.get("spawn", {}).get("enabled", true) == false:
+			continue
 		var anchor: Dictionary = raw_object.get("currentAnchor", {})
 		if str(anchor.get("type", "ground")) == "npc":
 			_assert_equal(str(anchor.get("npcId", "")) != "", true, "Held MVP object has NPC anchor: %s" % str(object_id), failures)
@@ -853,12 +1169,12 @@ func _test_mvp_object_pool_has_six_social_pressure_items(failures: Array) -> voi
 func _test_wellbeing_rules_use_existing_events_and_item_social(failures: Array) -> void:
 	var config: Dictionary = ConfigLoaderScript.load_wellbeing_config()
 	var registry = _make_registry()
-	var npc = NPCStateScript.from_dict({"id": "shi_ye", "name": "师爷", "current_cell": {"x": 2, "y": 2}, "runtime": {"wellbeing": {"state": "down", "problem": "stressed"}}})
-	var item = ItemStateScript.from_dict({"id": "jiu_tong_gun", "name": "九筒的枪", "social": {"danger": 95, "status": 70, "utility": 10, "debt": 20, "awkward": 85, "joke": 70}, "currentAnchor": {"type": "npc", "npcId": "shi_ye"}})
+	var npc = NPCStateScript.from_dict({"id": "npc_receiver", "name": "Receiver", "current_cell": {"x": 2, "y": 2}, "runtime": {"wellbeing": {"state": "down", "problem": "stressed"}}})
+	var item = ItemStateScript.from_dict({"id": "dangerous_prop", "name": "危险道具", "social": {"danger": 95, "status": 70, "utility": 10, "debt": 20, "awkward": 85, "joke": 70}, "currentAnchor": {"type": "npc", "npcId": "npc_receiver"}})
 	registry.add_npc(npc)
 	registry.add_item(item)
 	var event_log = InteractionEventLogScript.new()
-	var event = event_log.record(&"player_drop_item_on_npc", &"jiu_tong_gun", &"shi_ye", &"npc", Vector2i(2, 2), {"object_social": item.social.duplicate(true)})
+	var event = event_log.record(&"player_drop_item_on_npc", &"dangerous_prop", &"npc_receiver", &"npc", Vector2i(2, 2), {"object_social": item.social.duplicate(true)})
 	var judgement: Dictionary = WellbeingRulesScript.evaluate_event(event, npc, item, config)
 	_assert_equal(judgement.get("result", ""), "harm", "Stressed NPC receiving danger object is judged as harm", failures)
 	_assert_equal(judgement.get("reason", ""), "danger_added", "Wellbeing judgement records configured harm reason", failures)
@@ -873,27 +1189,26 @@ func _test_wellbeing_rules_cover_mvp_object_pool_interventions(failures: Array) 
 	var registry = _make_registry()
 	var event_log = InteractionEventLogScript.new()
 
-	var stressed = NPCStateScript.from_dict({"id": "shi_ye", "runtime": {"wellbeing": {"state": "down", "problem": "stressed"}}})
-	var ledger = ItemStateScript.from_dict({"id": "shiye_ledger", "typeId": "shiye_ledger", "ownerId": "shi_ye", "currentAnchor": {"type": "npc", "npcId": "shi_ye"}}, object_types)
-	var ledger_event = event_log.record(&"player_drop_item_on_npc", &"shiye_ledger", &"shi_ye", &"npc", Vector2i(2, 2), {"object_social": ledger.social.duplicate(true), "object_classification": ledger.classification.duplicate(true)})
-	var ledger_judgement: Dictionary = WellbeingRulesScript.evaluate_event(ledger_event, stressed, ledger, config)
-	_assert_equal(ledger_judgement.get("result", ""), "help", "Ledger-like order object helps stressed NPC", failures)
+	var stressed = NPCStateScript.from_dict({"id": "jd", "runtime": {"wellbeing": {"state": "down", "problem": "stressed"}}})
+	var seal = ItemStateScript.from_dict({"id": "seal_strip", "typeId": "seal_strip", "currentAnchor": {"type": "npc", "npcId": "jd"}}, object_types)
+	var seal_for_stress_event = event_log.record(&"player_drop_item_on_npc", &"seal_strip", &"jd", &"npc", Vector2i(2, 2), {"object_social": seal.social.duplicate(true), "object_classification": seal.classification.duplicate(true)})
+	var seal_stress_judgement: Dictionary = WellbeingRulesScript.evaluate_event(seal_for_stress_event, stressed, seal, config)
+	_assert_equal(seal_stress_judgement.get("result", ""), "help", "Seal-like order object helps stressed NPC", failures)
 
-	var afraid_owner = NPCStateScript.from_dict({"id": "jiu_tong", "runtime": {"wellbeing": {"state": "down", "problem": "afraid"}}})
-	var gun = ItemStateScript.from_dict({"id": "jiu_tong_gun", "typeId": "jiu_tong_gun", "ownerId": "jiu_tong", "currentAnchor": {"type": "npc", "npcId": "jiu_tong"}}, object_types)
-	var gun_home_event = event_log.record(&"player_drop_item_on_npc", &"jiu_tong_gun", &"jiu_tong", &"npc", Vector2i(2, 2), {"object_social": gun.social.duplicate(true), "object_classification": gun.classification.duplicate(true)})
-	var gun_home_judgement: Dictionary = WellbeingRulesScript.evaluate_event(gun_home_event, afraid_owner, gun, config)
-	_assert_equal(gun_home_judgement.get("result", ""), "help", "Danger item returning to owner can reduce fear", failures)
-	_assert_equal(gun_home_judgement.get("reason", ""), "danger_removed", "Owner-safe danger item uses danger_removed reason", failures)
+	var afraid_owner = NPCStateScript.from_dict({"id": "npc_owner", "runtime": {"wellbeing": {"state": "down", "problem": "afraid"}}})
+	var dangerous_item = ItemStateScript.from_dict({"id": "dangerous_prop", "ownerId": "npc_owner", "social": {"danger": 95, "status": 70, "utility": 10, "debt": 20, "awkward": 85, "joke": 70}, "currentAnchor": {"type": "npc", "npcId": "npc_owner"}}, object_types)
+	var dangerous_home_event = event_log.record(&"player_drop_item_on_npc", &"dangerous_prop", &"npc_owner", &"npc", Vector2i(2, 2), {"object_social": dangerous_item.social.duplicate(true), "object_classification": dangerous_item.classification.duplicate(true)})
+	var dangerous_home_judgement: Dictionary = WellbeingRulesScript.evaluate_event(dangerous_home_event, afraid_owner, dangerous_item, config)
+	_assert_equal(dangerous_home_judgement.get("result", ""), "help", "Danger item returning to owner can reduce fear", failures)
+	_assert_equal(dangerous_home_judgement.get("reason", ""), "danger_removed", "Owner-safe danger item uses danger_removed reason", failures)
 
 	var lost_face = NPCStateScript.from_dict({"id": "trump", "runtime": {"wellbeing": {"state": "down", "problem": "lost_face"}}})
-	var dangerous_status_event = event_log.record(&"player_drop_item_on_npc", &"jiu_tong_gun", &"trump", &"npc", Vector2i(2, 2), {"object_social": gun.social.duplicate(true), "object_classification": gun.classification.duplicate(true)})
-	var dangerous_status_judgement: Dictionary = WellbeingRulesScript.evaluate_event(dangerous_status_event, lost_face, gun, config)
+	var dangerous_status_event = event_log.record(&"player_drop_item_on_npc", &"dangerous_prop", &"trump", &"npc", Vector2i(2, 2), {"object_social": dangerous_item.social.duplicate(true), "object_classification": dangerous_item.classification.duplicate(true)})
+	var dangerous_status_judgement: Dictionary = WellbeingRulesScript.evaluate_event(dangerous_status_event, lost_face, dangerous_item, config)
 	_assert_equal(dangerous_status_judgement.get("result", ""), "harm", "High-status danger object does not restore lost face", failures)
 
-	var bored = NPCStateScript.from_dict({"id": "jiu_tong", "runtime": {"wellbeing": {"state": "down", "problem": "bored"}}})
-	var seal = ItemStateScript.from_dict({"id": "seal_strip", "typeId": "seal_strip", "currentAnchor": {"type": "ground"}}, object_types)
-	var seal_event = event_log.record(&"player_drop_item_on_npc", &"seal_strip", &"jiu_tong", &"npc", Vector2i(2, 2), {"object_social": seal.social.duplicate(true), "object_classification": seal.classification.duplicate(true)})
+	var bored = NPCStateScript.from_dict({"id": "musk", "runtime": {"wellbeing": {"state": "down", "problem": "bored"}}})
+	var seal_event = event_log.record(&"player_drop_item_on_npc", &"seal_strip", &"musk", &"npc", Vector2i(2, 2), {"object_social": seal.social.duplicate(true), "object_classification": seal.classification.duplicate(true)})
 	var seal_judgement: Dictionary = WellbeingRulesScript.evaluate_event(seal_event, bored, seal, config)
 	_assert_equal(seal_judgement.get("result", ""), "help", "High joke seal can relieve boredom through gag potential", failures)
 
@@ -919,124 +1234,153 @@ func _test_performance_director_sanitizes_to_catalog_ids(failures: Array) -> voi
 	_assert_equal(rendered.contains("[添乱]"), true, "Rendered performance includes rule-owned result tag", failures)
 	_assert_equal(rendered.contains("[举手撇清]"), true, "Rendered performance uses catalog label for valid action", failures)
 	_assert_equal(rendered.contains("[防御]"), true, "Rendered performance uses catalog label for valid expression", failures)
+	var in_game_rendered := director.render_plan(sanitized, judgement, false)
+	_assert_equal(in_game_rendered, "小人没碰。", "In-game performance rendering only shows speech, not internal result/action labels", failures)
 
 
-func _test_training_gun_to_shiye_creates_preemptive_body_gag(failures: Array) -> void:
+func _test_training_seal_to_jd_creates_preemptive_body_gag(failures: Array) -> void:
 	var game = MainGameScript.new()
 	var registry = _make_registry()
 	registry.set_map_bounds(Rect2i(0, 0, 8, 8))
 	var event_log = InteractionEventLogScript.new()
 	var object_types := _core_validation_object_types()
 	registry.set_object_types(object_types)
-	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("jiu_tong")))
-	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("shi_ye")))
-	var gun = ItemStateScript.from_dict({"id": "jiu_tong_gun", "typeId": "jiu_tong_gun", "ownerId": "jiu_tong", "currentAnchor": {"type": "npc", "npcId": "jiu_tong"}}, object_types)
-	registry.add_item(gun)
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("musk")))
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("jd")))
+	var seal = ItemStateScript.from_dict({"id": "seal_strip", "typeId": "seal_strip", "ownerId": "musk", "currentAnchor": {"type": "npc", "npcId": "musk"}}, object_types)
+	registry.add_item(seal)
 	game.entity_registry = registry
 	game.event_log = event_log
 	game.gameplay_config = _gameplay_config()
 
-	var first: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(gun, &"shi_ye", &"jiu_tong", [&"jiu_tong", &"shi_ye"], registry, _gameplay_config(), 1)
-	_assert_equal(first["giftStance"].get("gagTag", ""), "小人没碰", "First gun attach chooses Shiye's readable body gag", failures)
-	_assert_equal(_plan_has_expression(first.get("performancePlan", {}), "nervous"), true, "Gift performance plan includes catalog expression from stance reason", failures)
-	_assert_equal(first["objectMemoryUpdates"].is_empty(), true, "First gun attach is only reaction, not learned gag yet", failures)
-	var second: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(gun, &"shi_ye", &"jiu_tong", [&"jiu_tong", &"shi_ye"], registry, _gameplay_config(), 2)
-	_assert_equal(second["objectMemoryUpdates"].is_empty(), false, "Second gun attach promotes recognition memory", failures)
-	_assert_equal(gun.memory["topLinks"][0]["stage"], "repeated", "Second gun attach reaches recognition stage", failures)
-	_assert_equal(gun.memory["topLinks"][0]["gagTag"], "小人没碰", "Gun memory stores task-readable gag tag", failures)
-	var distance_before_preemptive: float = registry.npcs[&"shi_ye"].position.distance_to(game._item_world_position(&"jiu_tong_gun"))
-	var preemptive := game._emit_preemptive_item_gag(&"jiu_tong_gun")
-	_assert_equal(preemptive.is_empty(), false, "Third interaction can fire when player merely drags the trained gun", failures)
-	_assert_equal(preemptive.get("gagTag", ""), "小人没碰", "Preemptive gun gag uses trained body tag", failures)
-	_assert_equal(str(preemptive.get("event_text", "")).find("预判") >= 0, true, "Preemptive gun gag is visibly predictive", failures)
+	var first: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(seal, &"jd", &"musk", [&"musk", &"jd"], registry, _gameplay_config(), 1)
+	_assert_equal(first["giftStance"].get("gagTag", ""), "先定口径", "First seal attach chooses JD's readable body gag", failures)
+	_assert_equal(_plan_has_expression(first.get("performancePlan", {}), "defensive") or _plan_has_expression(first.get("performancePlan", {}), "awkward"), true, "Gift performance plan includes catalog expression from stance reason", failures)
+	_assert_equal(first["objectMemoryUpdates"].is_empty(), true, "First seal attach is only reaction, not learned gag yet", failures)
+	var second: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(seal, &"jd", &"musk", [&"musk", &"jd"], registry, _gameplay_config(), 2)
+	_assert_equal(second["objectMemoryUpdates"].is_empty(), false, "Second seal attach promotes recognition memory", failures)
+	_assert_equal(seal.memory["topLinks"][0]["stage"], "repeated", "Second seal attach reaches recognition stage", failures)
+	_assert_equal(seal.memory["topLinks"][0]["gagTag"], "先定口径", "Seal memory stores task-readable gag tag", failures)
+	var distance_before_preemptive: float = registry.npcs[&"jd"].position.distance_to(game._item_world_position(&"seal_strip"))
+	var preemptive := game._emit_preemptive_item_gag(&"seal_strip")
+	_assert_equal(preemptive.is_empty(), false, "Third interaction can fire when player merely drags the trained seal", failures)
+	_assert_equal(preemptive.get("gagTag", ""), "先定口径", "Preemptive seal gag uses trained body tag", failures)
+	_assert_equal(str(preemptive.get("event_text", "")).find("预判") >= 0, true, "Preemptive seal gag is visibly predictive", failures)
 	_assert_equal(preemptive.get("body_reaction", {}).get("type", ""), "retreat", "Preemptive avoidant body gag moves NPC away", failures)
-	_assert_equal(registry.npcs[&"shi_ye"].position.distance_to(game._item_world_position(&"jiu_tong_gun")) > distance_before_preemptive, true, "Shiye physically retreats from trained gun gag", failures)
-	_assert_equal(gun.memory["topLinks"][0]["stage"], "noticed", "Preemptive drag upgrades body gag to task-ready noticed stage", failures)
+	_assert_equal(registry.npcs[&"jd"].position.distance_to(game._item_world_position(&"seal_strip")) > distance_before_preemptive, true, "JD physically retreats from trained seal gag", failures)
+	_assert_equal(seal.memory["topLinks"][0]["stage"], "noticed", "Preemptive drag upgrades body gag to task-ready noticed stage", failures)
 	_assert_equal(event_log.recent_events(1)[0].type, &"player_drag_started_trained_item", "Dragging trained item records preemptive gag event", failures)
 	game.free()
 
 
-func _test_gold_cup_to_shiye_turns_liking_into_relation_debt(failures: Array) -> void:
+func _test_gold_cup_to_musk_turns_liking_into_relation_debt(failures: Array) -> void:
 	var registry = _make_registry()
 	var object_types := _core_validation_object_types()
 	registry.set_object_types(object_types)
 	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("trump")))
-	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("shi_ye")))
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("musk")))
 	var cup = ItemStateScript.from_dict({"id": "gold_cup", "typeId": "gold_cup", "currentAnchor": {"type": "npc", "npcId": "trump"}}, object_types)
 	registry.add_item(cup)
 
-	var result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(cup, &"shi_ye", &"trump", [&"trump", &"shi_ye"], registry, _gameplay_config(), 10, {
+	var result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(cup, &"musk", &"trump", [&"trump", &"musk"], registry, _gameplay_config(), 10, {
 		"operator": "player_drag",
 		"giverNpcId": &"trump",
-		"receiverNpcId": &"shi_ye",
+		"receiverNpcId": &"musk",
 		"fromAnchor": {"type": "npc", "npcId": "trump"},
-		"toAnchor": {"type": "npc", "npcId": "shi_ye"},
+		"toAnchor": {"type": "npc", "npcId": "musk"},
 		"attributionTarget": "npc",
 		"attributionConfidence": 1.0,
 	})
 	var stance: Dictionary = result["giftStance"]
-	var relation: Dictionary = registry.relation_memory(&"shi_ye", &"trump")
+	var relation: Dictionary = registry.relation_memory(&"musk", &"trump")
 	_assert_equal(["ambivalent", "like"].has(str(stance.get("result", ""))), true, "Gold cup creates want/cover tension instead of simple rejection", failures)
-	_assert_equal(int(stance.get("like", 0)) > int(stance.get("reject", 0)) - 12, true, "Gold cup remains attractive enough for Shiye to hesitate", failures)
-	_assert_equal(int(relation.get("attention", 0)) > 0, true, "Gold cup makes Shiye pay attention to giver", failures)
+	_assert_equal(int(stance.get("like", 0)) > int(stance.get("reject", 0)) - 12, true, "Gold cup remains attractive enough for Musk to hesitate", failures)
+	_assert_equal(int(relation.get("attention", 0)) > 0, true, "Gold cup makes Musk pay attention to giver", failures)
 	_assert_equal(int(relation.get("warmth", 0)) > 0, true, "Gold cup liking converts into warmth toward giver", failures)
 	_assert_equal(int(relation.get("debt", 0)) > 0, true, "Gold cup pressure converts into relationship debt", failures)
 	_assert_equal(int(relation.get("awkward", 0)) > 0, true, "Gold cup debt also leaves awkwardness", failures)
 
 
-func _test_coke_ping_pong_between_trump_and_jiu_tong_creates_relation_gag(failures: Array) -> void:
+func _test_hundred_gold_cups_to_trump_saturates_relation_memory(failures: Array) -> void:
 	var registry = _make_registry()
 	var object_types := _core_validation_object_types()
 	registry.set_object_types(object_types)
 	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("trump")))
-	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("jiu_tong")))
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("musk")))
+	var cup = ItemStateScript.from_dict({"id": "gold_cup", "typeId": "gold_cup", "currentAnchor": {"type": "npc", "npcId": "musk"}}, object_types)
+	registry.add_item(cup)
+
+	for index in range(100):
+		cup.current_anchor = {"type": "npc", "npcId": "musk"}
+		InteractionDeltaRulesScript.apply_attach_object_to_npc(cup, &"trump", &"musk", [&"musk", &"trump"], registry, _gameplay_config(), 100 + index, {
+			"operator": "player_drag",
+			"giverNpcId": &"musk",
+			"receiverNpcId": &"trump",
+			"fromAnchor": {"type": "npc", "npcId": "musk"},
+			"toAnchor": {"type": "npc", "npcId": "trump"},
+			"attributionTarget": "npc",
+			"attributionConfidence": 1.0,
+		})
+	var relation: Dictionary = registry.relation_memory(&"trump", &"musk")
+
+	_assert_equal(int(relation.get("attention", 0)), 100, "100 gold cups should saturate Trump attention to Musk", failures)
+	_assert_equal(int(relation.get("warmth", 0)), 100, "100 gold cups should saturate Trump warmth/expectation to Musk", failures)
+	_assert_equal(int(relation.get("debt", 0)), 100, "100 gold cups should saturate Trump relationship debt to Musk", failures)
+
+
+func _test_coke_ping_pong_between_trump_and_musk_creates_relation_gag(failures: Array) -> void:
+	var registry = _make_registry()
+	var object_types := _core_validation_object_types()
+	registry.set_object_types(object_types)
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("trump")))
+	registry.add_npc(NPCStateScript.from_dict(_core_validation_npc("musk")))
 	var coke = ItemStateScript.from_dict({"id": "diet_coke", "typeId": "diet_coke", "currentAnchor": {"type": "ground"}}, object_types)
 	registry.add_item(coke)
 
-	var to_trump: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"trump", &"jiu_tong", [&"jiu_tong", &"trump"], registry, _gameplay_config(), 20, {
+	var to_trump: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"trump", &"musk", [&"musk", &"trump"], registry, _gameplay_config(), 20, {
 		"operator": "player_drag",
-		"giverNpcId": &"jiu_tong",
+		"giverNpcId": &"musk",
 		"receiverNpcId": &"trump",
-		"fromAnchor": {"type": "npc", "npcId": "jiu_tong"},
+		"fromAnchor": {"type": "npc", "npcId": "musk"},
 		"toAnchor": {"type": "npc", "npcId": "trump"},
 		"attributionTarget": "npc",
 		"attributionConfidence": 1.0,
 	})
-	var to_jiu_tong: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"jiu_tong", &"trump", [&"trump", &"jiu_tong"], registry, _gameplay_config(), 21, {
+	var to_musk: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"musk", &"trump", [&"trump", &"musk"], registry, _gameplay_config(), 21, {
 		"operator": "player_drag",
 		"giverNpcId": &"trump",
-		"receiverNpcId": &"jiu_tong",
+		"receiverNpcId": &"musk",
 		"fromAnchor": {"type": "npc", "npcId": "trump"},
-		"toAnchor": {"type": "npc", "npcId": "jiu_tong"},
+		"toAnchor": {"type": "npc", "npcId": "musk"},
 		"attributionTarget": "npc",
 		"attributionConfidence": 1.0,
 	})
-	var to_trump_again: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"trump", &"jiu_tong", [&"jiu_tong", &"trump"], registry, _gameplay_config(), 22, {
+	var to_trump_again: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"trump", &"musk", [&"musk", &"trump"], registry, _gameplay_config(), 22, {
 		"operator": "player_drag",
-		"giverNpcId": &"jiu_tong",
+		"giverNpcId": &"musk",
 		"receiverNpcId": &"trump",
-		"fromAnchor": {"type": "npc", "npcId": "jiu_tong"},
+		"fromAnchor": {"type": "npc", "npcId": "musk"},
 		"toAnchor": {"type": "npc", "npcId": "trump"},
 		"attributionTarget": "npc",
 		"attributionConfidence": 1.0,
 	})
-	var to_jiu_tong_again: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"jiu_tong", &"trump", [&"trump", &"jiu_tong"], registry, _gameplay_config(), 23, {
+	var to_musk_again: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(coke, &"musk", &"trump", [&"trump", &"musk"], registry, _gameplay_config(), 23, {
 		"operator": "player_drag",
 		"giverNpcId": &"trump",
-		"receiverNpcId": &"jiu_tong",
+		"receiverNpcId": &"musk",
 		"fromAnchor": {"type": "npc", "npcId": "trump"},
-		"toAnchor": {"type": "npc", "npcId": "jiu_tong"},
+		"toAnchor": {"type": "npc", "npcId": "musk"},
 		"attributionTarget": "npc",
 		"attributionConfidence": 1.0,
 	})
 
-	_assert_equal(to_trump["giftTrace"].get("eventType", ""), "gift:npc:jiu_tong", "Coke to Trump is attributed to Jiu Tong", failures)
-	_assert_equal(to_jiu_tong["giftTrace"].get("eventType", ""), "gift:npc:trump", "Coke back to Jiu Tong is attributed to Trump", failures)
+	_assert_equal(to_trump["giftTrace"].get("eventType", ""), "gift:npc:musk", "Coke to Trump is attributed to Musk", failures)
+	_assert_equal(to_musk["giftTrace"].get("eventType", ""), "gift:npc:trump", "Coke back to Musk is attributed to Trump", failures)
 	_assert_equal(to_trump_again["interactionTrace"].get("stage", ""), "repeated", "Coke returning to Trump becomes recognizable", failures)
-	_assert_equal(to_jiu_tong_again["interactionTrace"].get("stage", ""), "repeated", "Coke returning to Jiu Tong becomes recognizable", failures)
+	_assert_equal(to_musk_again["interactionTrace"].get("stage", ""), "repeated", "Coke returning to Musk becomes recognizable", failures)
 	_assert_equal(coke.memory["topLinks"].size() >= 2, true, "Coke memory keeps both sides of the ping-pong", failures)
-	_assert_equal(registry.relation_memory(&"trump", &"jiu_tong").is_empty(), false, "Trump relation to Jiu Tong changes through coke", failures)
-	_assert_equal(registry.relation_memory(&"jiu_tong", &"trump").is_empty(), false, "Jiu Tong relation to Trump changes through coke", failures)
+	_assert_equal(registry.relation_memory(&"trump", &"musk").is_empty(), false, "Trump relation to Musk changes through coke", failures)
+	_assert_equal(registry.relation_memory(&"musk", &"trump").is_empty(), false, "Musk relation to Trump changes through coke", failures)
 
 
 func _test_interaction_delta_updates_object_and_relation_memory(failures: Array) -> void:
@@ -1050,17 +1394,17 @@ func _test_interaction_delta_updates_object_and_relation_memory(failures: Array)
 	}
 	registry.set_object_types(object_types)
 	registry.add_npc(NPCStateScript.from_dict({"id": "trump"}))
-	registry.add_npc(NPCStateScript.from_dict({"id": "jiu_tong"}))
+	registry.add_npc(NPCStateScript.from_dict({"id": "npc_receiver"}))
 	var item = ItemStateScript.from_dict({
 		"id": "sealed_brief",
 		"typeId": "sealed_brief",
 		"ownerId": "trump",
 		"accessRule": {"allowedNpcIds": ["trump"], "publicKnown": true, "exclusivity": 95},
-		"currentAnchor": {"type": "npc", "npcId": "jiu_tong"},
+		"currentAnchor": {"type": "npc", "npcId": "npc_receiver"},
 	}, object_types)
 	registry.add_item(item)
 
-	var first_result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(item, &"jiu_tong", &"trump", [&"trump", &"jiu_tong"], registry, _gameplay_config(), 12)
+	var first_result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(item, &"npc_receiver", &"trump", [&"trump", &"npc_receiver"], registry, _gameplay_config(), 12)
 
 	_assert_equal(first_result["giftStance"].has("pressure"), true, "Gift stance exposes pressure", failures)
 	_assert_equal(first_result["giftStance"].has("fatigue"), true, "Gift stance exposes fatigue", failures)
@@ -1072,35 +1416,35 @@ func _test_interaction_delta_updates_object_and_relation_memory(failures: Array)
 	_assert_equal(int(first_result["interactionTrace"]["heat"]) > 0, true, "First attach trace heat is positive", failures)
 	_assert_equal(first_result["giftTrace"]["eventType"], "gift:npc:trump", "NPC-attributed gift records giver-scoped fatigue trace", failures)
 	_assert_equal(item.memory["topLinks"].is_empty(), true, "First attach does not promote trace into formal object memory", failures)
-	_assert_equal(registry.relation_memory(&"jiu_tong", &"trump").is_empty(), false, "Relation memory records transfer pressure", failures)
-	_assert_equal(registry.relation_memory(&"trump", &"jiu_tong").is_empty(), true, "Gift relation does not update giver back to receiver automatically", failures)
-	_assert_equal(registry.npcs[&"jiu_tong"].stance_to_object["objectId"], "sealed_brief", "NPC runtime records stance to object", failures)
+	_assert_equal(registry.relation_memory(&"npc_receiver", &"trump").is_empty(), false, "Relation memory records transfer pressure", failures)
+	_assert_equal(registry.relation_memory(&"trump", &"npc_receiver").is_empty(), true, "Gift relation does not update giver back to receiver automatically", failures)
+	_assert_equal(registry.npcs[&"npc_receiver"].stance_to_object["objectId"], "sealed_brief", "NPC runtime records stance to object", failures)
 	_assert_equal(item.owner_id, &"trump", "Attach does not rewrite ownerId", failures)
 	_assert_equal(item.custody_state, "unclaimed", "Attach keeps custody as unclaimed instead of duplicating stance", failures)
 
-	var second_result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(item, &"jiu_tong", &"trump", [&"trump", &"jiu_tong"], registry, _gameplay_config(), 13)
+	var second_result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(item, &"npc_receiver", &"trump", [&"trump", &"npc_receiver"], registry, _gameplay_config(), 13)
 	_assert_equal(second_result["interactionTrace"]["countInWindow"], 2, "Second attach advances trace count", failures)
 	_assert_equal(int(second_result["giftStance"]["fatigue"]) > int(first_result["giftStance"]["fatigue"]), true, "Repeated gift raises fatigue", failures)
 	_assert_equal(second_result["performancePlan"]["pattern"], "leak_cover", "Repeated attach switches to leak_cover pattern", failures)
 	_assert_equal(item.memory["topLinks"].is_empty(), false, "Repeated attach promotes trace into object memory", failures)
-	_assert_equal(item.memory["topLinks"][0]["npcId"], "jiu_tong", "Object memory stores only the direct target NPC link", failures)
+	_assert_equal(item.memory["topLinks"][0]["npcId"], "npc_receiver", "Object memory stores only the direct target NPC link", failures)
 	_assert_equal(item.memory["topLinks"][0].has("stage"), true, "Object memory stores stage", failures)
 	_assert_equal(int(item.memory["topLinks"][0]["heat"]) > 0, true, "Second attach starts formal object memory heat", failures)
 	_assert_equal(item.memory["topLinks"][0]["stage"], "repeated", "Second attach promotes object memory to repeated", failures)
-	var third_result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(item, &"jiu_tong", &"trump", [&"trump", &"jiu_tong"], registry, _gameplay_config(), 14)
+	var third_result: Dictionary = InteractionDeltaRulesScript.apply_attach_object_to_npc(item, &"npc_receiver", &"trump", [&"trump", &"npc_receiver"], registry, _gameplay_config(), 14)
 	_assert_equal(int(third_result["interactionTrace"]["heat"]) > int(second_result["interactionTrace"]["heat"]), true, "Third attach increases trace heat", failures)
 	_assert_equal(third_result["interactionTrace"]["stage"], "noticed", "Third attach marks trace as noticed", failures)
 	_assert_equal(third_result["performancePlan"]["pattern"], "preemptive_gag", "Third attach switches to preemptive_gag pattern", failures)
 	_assert_equal(int(item.memory["topLinks"][0]["heat"]) > 0, true, "Third attach updates formal object memory heat", failures)
 	_assert_equal(item.memory["topLinks"][0]["stage"], "noticed", "Third attach promotes object memory to noticed", failures)
-	var relation_after_third: Dictionary = registry.relation_memory(&"jiu_tong", &"trump")
+	var relation_after_third: Dictionary = registry.relation_memory(&"npc_receiver", &"trump")
 	_assert_equal(int(relation_after_third["attention"]) > 0, true, "Third attach relation attention accumulates", failures)
 	_assert_equal(int(relation_after_third["awkward"]) > 0 or int(relation_after_third["suspicion"]) > 0, true, "Third attach relation records social pressure", failures)
 	var saved: Dictionary = registry.to_dict()
 	_assert_equal(saved.has("interaction_traces"), true, "Registry serializes interaction traces separately from items", failures)
 	var loaded = WorldEntityRegistryScript.new()
 	loaded.load_from_dict(saved)
-	_assert_equal(loaded.interaction_trace(&"sealed_brief", &"jiu_tong")["countInWindow"], 3, "Registry restores interaction trace by canonical key", failures)
+	_assert_equal(loaded.interaction_trace(&"sealed_brief", &"npc_receiver")["countInWindow"], 3, "Registry restores interaction trace by canonical key", failures)
 
 
 func _test_gift_stance_handles_player_ground_gift_without_npc_relation(failures: Array) -> void:
@@ -1119,7 +1463,7 @@ func _test_gift_stance_handles_player_ground_gift_without_npc_relation(failures:
 		"traits": {"tell": 78, "face": 86, "control": 88, "caution": 44, "play": 72},
 		"preference": {"classificationAffinity": {"drink.soda": 30}, "tolerance": {"repetition": 70}},
 	}))
-	registry.add_npc(NPCStateScript.from_dict({"id": "jiu_tong"}))
+	registry.add_npc(NPCStateScript.from_dict({"id": "npc_receiver"}))
 	var item = ItemStateScript.from_dict({"id": "diet_coke", "typeId": "diet_coke", "currentAnchor": {"type": "ground"}}, object_types)
 	registry.add_item(item)
 
@@ -1133,7 +1477,7 @@ func _test_gift_stance_handles_player_ground_gift_without_npc_relation(failures:
 	})
 	_assert_equal(result["giftStance"]["result"], "like", "Player can directly gift unowned liked object from ground", failures)
 	_assert_equal(result["giftTrace"]["eventType"], "gift:player", "Player-origin gift records player fatigue trace", failures)
-	_assert_equal(registry.relation_memory(&"trump", &"jiu_tong").is_empty(), true, "Player-origin unowned gift does not create NPC relation", failures)
+	_assert_equal(registry.relation_memory(&"trump", &"npc_receiver").is_empty(), true, "Player-origin unowned gift does not create NPC relation", failures)
 	_assert_equal(InteractionDeltaRulesScript._classification_keys(item).has("drink.soda"), true, "Subtype is stored short and composed into category subtype key", failures)
 
 
@@ -1265,6 +1609,13 @@ func _make_main_game_drag_context() -> Dictionary:
 		"holder": holder,
 		"target": target,
 	}
+
+
+func _npc_dump_by_id(dump: Dictionary, npc_id: String) -> Dictionary:
+	for raw_npc in dump.get("npcs", []):
+		if raw_npc is Dictionary and str(raw_npc.get("id", "")) == npc_id:
+			return raw_npc
+	return {}
 
 
 func _assert_equal(actual: Variant, expected: Variant, message: String, failures: Array) -> void:

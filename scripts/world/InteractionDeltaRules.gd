@@ -30,6 +30,30 @@ static func apply_attach_object_to_npc(item, target_npc_id: StringName, previous
 	}
 
 
+static func apply_npc_experience_event(npc, event_type: StringName, todo, target_id: StringName, target_type: StringName, registry, gameplay_config: Dictionary, current_tick: int, success: bool = true, reason: StringName = &"") -> Dictionary:
+	if npc == null:
+		return {}
+	var config := _experience_config(gameplay_config)
+	var intent := StringName(_field(todo, "intent", &"wander"))
+	var todo_id := StringName(_field(todo, "id", &""))
+	var todo_reason := str(_field(todo, "reason", ""))
+	var delta := _npc_experience_delta(intent, event_type, target_type, success, reason, config)
+	var memory_update := _apply_npc_experience_memory(npc, intent, event_type, todo_id, target_id, target_type, todo_reason, delta, config, current_tick, success, reason)
+	var relation_updates := _update_experience_relation_memory(registry, npc.id, target_id, target_type, intent, success, config, current_tick)
+	_update_npc_runtime_from_experience(npc, intent, delta, success, reason, config, current_tick)
+	return {
+		"eventType": str(event_type),
+		"intent": str(intent),
+		"targetId": str(target_id),
+		"targetType": str(target_type),
+		"success": success,
+		"reason": str(reason),
+		"delta": delta,
+		"memoryUpdate": memory_update,
+		"relationMemoryUpdates": relation_updates,
+	}
+
+
 static func gift_stance(item, target_npc_id: StringName, receiver = null, repeat_trace: Dictionary = {}, config: Dictionary = {}) -> Dictionary:
 	var stance_cfg: Dictionary = config.get("giftStance", {})
 	var social: Dictionary = item.social if item != null else {}
@@ -205,6 +229,37 @@ static func _attach_config(gameplay_config: Dictionary) -> Dictionary:
 	return configured.duplicate(true)
 
 
+static func _experience_config(gameplay_config: Dictionary) -> Dictionary:
+	var root: Dictionary = gameplay_config.get("npcExperienceDeltaConfig", gameplay_config.get("npc_experience_delta_config", {}))
+	var result := {
+		"base": {
+			"attention": 2,
+			"confidence": 1,
+		},
+		"intentDelta": {
+			"talk_to_npc": {"attention": 4, "social_charge": 6, "curiosity": 1},
+			"inspect_item": {"attention": 5, "curiosity": 6},
+			"visit_place": {"attention": 3, "confidence": 2},
+			"wander": {"curiosity": 2, "fatigue": 1},
+			"rest": {"fatigue": -6, "confidence": 1},
+		},
+		"failureDelta": {
+			"attention": 1,
+			"confidence": -2,
+			"fatigue": 4,
+			"frustration": 8,
+		},
+		"bounds": {
+			"min": 0,
+			"max": 100,
+		},
+		"maxTopIntents": 5,
+	}
+	if root is Dictionary:
+		result = _deep_merge_dict(result, root)
+	return result
+
+
 static func _performance_steps(target_npc_id: StringName, object_id: StringName, plan_cfg: Dictionary, stance: Dictionary = {}) -> Array:
 	var result: Array = []
 	var raw_steps: Variant = plan_cfg.get("steps", [])
@@ -241,6 +296,146 @@ static func _performance_expression_id(plan_cfg: Dictionary, stance: Dictionary)
 static func _configure_registry(registry, config: Dictionary) -> void:
 	if registry != null and registry.has_method("set_interaction_stage_thresholds"):
 		registry.set_interaction_stage_thresholds(config.get("stageThresholds", {}))
+
+
+static func _npc_experience_delta(intent: StringName, _event_type: StringName, _target_type: StringName, success: bool, _reason: StringName, config: Dictionary) -> Dictionary:
+	var delta: Dictionary = config.get("base", {}).duplicate(true)
+	delta = _sum_numeric_dicts(delta, config.get("intentDelta", {}).get(str(intent), {}))
+	if not success:
+		delta = _sum_numeric_dicts(delta, config.get("failureDelta", {}))
+	return _clean_numeric_delta(delta)
+
+
+static func _apply_npc_experience_memory(npc, intent: StringName, event_type: StringName, todo_id: StringName, target_id: StringName, target_type: StringName, todo_reason: String, delta: Dictionary, config: Dictionary, current_tick: int, success: bool, reason: StringName) -> Dictionary:
+	var bounds: Dictionary = config.get("bounds", {})
+	var min_value := int(bounds.get("min", 0))
+	var max_value := int(bounds.get("max", 100))
+	var memory: Dictionary = npc.experience_memory if npc.experience_memory is Dictionary else {}
+	for field in ["attention", "confidence", "fatigue", "curiosity", "social_charge", "frustration"]:
+		memory[field] = clampi(int(memory.get(field, 0)) + int(delta.get(field, 0)), min_value, max_value)
+	memory["lastExperience"] = {
+		"eventType": str(event_type),
+		"intent": str(intent),
+		"todoId": str(todo_id),
+		"targetId": str(target_id),
+		"targetType": str(target_type),
+		"reason": str(reason),
+		"todoReason": todo_reason,
+		"success": success,
+		"tick": current_tick,
+		"delta": delta.duplicate(true),
+	}
+	_upsert_experience_intent(memory, intent, delta, current_tick, int(config.get("maxTopIntents", 5)))
+	npc.experience_memory = memory
+	return memory["lastExperience"].duplicate(true)
+
+
+static func _upsert_experience_intent(memory: Dictionary, intent: StringName, delta: Dictionary, current_tick: int, max_count: int) -> void:
+	var top: Array = memory.get("topIntents", [])
+	var score_delta: int = max(1, int(delta.get("attention", 0)) + int(delta.get("curiosity", 0)) + int(delta.get("social_charge", 0)) + int(delta.get("frustration", 0)))
+	for entry in top:
+		if not (entry is Dictionary):
+			continue
+		if str(entry.get("intent", "")) != str(intent):
+			continue
+		entry["count"] = int(entry.get("count", 0)) + 1
+		entry["score"] = int(entry.get("score", 0)) + score_delta
+		entry["lastSeenAt"] = current_tick
+		memory["topIntents"] = _trim_experience_intents(top, max_count)
+		return
+	top.append({
+		"intent": str(intent),
+		"count": 1,
+		"score": score_delta,
+		"lastSeenAt": current_tick,
+	})
+	memory["topIntents"] = _trim_experience_intents(top, max_count)
+
+
+static func _trim_experience_intents(entries: Array, max_count: int) -> Array:
+	entries.sort_custom(func(a, b) -> bool:
+		if int(a.get("score", 0)) == int(b.get("score", 0)):
+			return int(a.get("lastSeenAt", 0)) > int(b.get("lastSeenAt", 0))
+		return int(a.get("score", 0)) > int(b.get("score", 0))
+	)
+	while entries.size() > max(1, max_count):
+		entries.pop_back()
+	return entries
+
+
+static func _update_experience_relation_memory(registry, npc_id: StringName, target_id: StringName, target_type: StringName, intent: StringName, success: bool, config: Dictionary, current_tick: int) -> Array:
+	if registry == null or not registry.has_method("apply_relation_delta"):
+		return []
+	if target_type != &"npc" or target_id == &"" or target_id == npc_id:
+		return []
+	var relation_cfg: Dictionary = config.get("relationDelta", {})
+	var delta: Dictionary = relation_cfg.get(str(intent), {"attention": 2, "warmth": 1})
+	if not success:
+		delta = relation_cfg.get("failure", {"attention": 1, "awkward": 3})
+	return [registry.apply_relation_delta(npc_id, target_id, delta, str(intent), current_tick)]
+
+
+static func _update_npc_runtime_from_experience(npc, intent: StringName, delta: Dictionary, success: bool, reason: StringName, _config: Dictionary, current_tick: int) -> void:
+	if not success:
+		npc.performance_state = "blocked"
+		npc.emotional_state = "frustrated"
+	elif intent == &"talk_to_npc":
+		npc.performance_state = "socializing"
+		npc.emotional_state = "engaged"
+	elif intent == &"inspect_item":
+		npc.performance_state = "inspecting"
+		npc.emotional_state = "curious"
+	elif intent == &"rest":
+		npc.performance_state = "resting"
+		npc.emotional_state = "settled"
+	elif intent == &"visit_place":
+		npc.performance_state = "visiting"
+		npc.emotional_state = "focused"
+	else:
+		npc.performance_state = "roaming"
+		npc.emotional_state = "neutral"
+	npc.cooldowns["lastReactedAt"] = current_tick
+	npc.cooldowns["lastExperienceReason"] = str(reason)
+	npc.cooldowns["lastExperienceIntent"] = str(intent)
+
+
+static func _sum_numeric_dicts(base: Dictionary, extra: Variant) -> Dictionary:
+	var result := base.duplicate(true)
+	if not (extra is Dictionary):
+		return result
+	for key in extra.keys():
+		result[key] = int(result.get(key, 0)) + int(extra[key])
+	return result
+
+
+static func _clean_numeric_delta(delta: Dictionary) -> Dictionary:
+	var result := {}
+	for key in delta.keys():
+		var value := int(delta[key])
+		if value != 0:
+			result[key] = value
+	return result
+
+
+static func _deep_merge_dict(base: Dictionary, override: Dictionary) -> Dictionary:
+	var result := base.duplicate(true)
+	for key in override.keys():
+		if result.get(key) is Dictionary and override[key] is Dictionary:
+			result[key] = _deep_merge_dict(result[key], override[key])
+		else:
+			result[key] = override[key]
+	return result
+
+
+static func _field(value, name: String, fallback: Variant = null) -> Variant:
+	if value == null:
+		return fallback
+	if value is Dictionary:
+		return value.get(name, fallback)
+	if value is Object:
+		var got = value.get(name)
+		return got if got != null else fallback
+	return fallback
 
 
 static func _heat_delta(social: Dictionary, stance: Dictionary, config: Dictionary) -> int:

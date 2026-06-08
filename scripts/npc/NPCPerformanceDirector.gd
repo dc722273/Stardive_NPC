@@ -75,10 +75,10 @@ func sanitize_plan(plan: Dictionary, judgement: Dictionary) -> Dictionary:
 	}
 
 
-func render_plan(plan: Dictionary, judgement: Dictionary = {}) -> String:
+func render_plan(plan: Dictionary, judgement: Dictionary = {}, include_labels: bool = true) -> String:
 	var parts := PackedStringArray()
 	var tag := str(judgement.get("resultLabel", ""))
-	if not tag.is_empty():
+	if include_labels and not tag.is_empty():
 		parts.append("[%s]" % tag)
 	for step in plan.get("steps", []):
 		if not (step is Dictionary):
@@ -88,6 +88,8 @@ func render_plan(plan: Dictionary, judgement: Dictionary = {}) -> String:
 			var line := str(step.get("line", "")).strip_edges()
 			if not line.is_empty():
 				parts.append(line)
+			continue
+		if not include_labels:
 			continue
 		var label := _step_label(step)
 		if not label.is_empty():

@@ -1,7 +1,7 @@
 extends RefCounted
 class_name LLMConfig
 
-const DEFAULT_MODEL := "google/gemini-3.1-flash-lite"
+const DEFAULT_MODEL := "google/gemini-3.5-flash"
 const DEFAULT_BASE_URL := "https://openrouter.ai/api/v1"
 const ENV_FILE_PATHS := ["res://.env"]
 const API_KEY_KEYS := ["OPENROUTER_API_KEY", "NPC_LLM_API_KEY"]

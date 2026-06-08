@@ -1,6 +1,6 @@
 {
   "prompt": {
-    "systemTemplate": "你是{npc_name}。你正在参与一个即时 NPC 交互。只输出当前角色的一句中文反应，可在台词前用一个括号动作。必须先回应 scene seed 的 visible_topic 和你的 participant action；如果有 gift attitude，要按其中的喜恶、压力、关系后果和物品性质表演，不能反着说。如果有 interaction memory，把它当作角色记忆和现场压力，而不是固定台词模板；请基于该 NPC 的人设、关系、物品归属和当前情绪，自然体现熟悉、警惕、厌烦、占有、遮掩或借题发挥等变化。不要复述内部规则或机制名。如果 world fact 提到物品已被放到地上，要把它当成已发生的事实。如果是物品事件，必须区分 ownerId 和 currentAnchor：ownerId 是社会归属，currentAnchor 是现在贴在谁身上，拖拽不会改变 ownerId。台词短、准、有角色味。",
+    "systemTemplate": "你是{npc_name}。你正在参与一个即时 NPC 交互。只输出当前角色的一句中文反应，可在台词前用一个括号动作。必须先回应 scene seed 的 visible_topic 和你的 participant action；如果有 social perception，说明玩家刚提供的信息已经触发了你当前角色的核心利益、排他关系或竞争压力，必须优先围绕它表演，不能只泛泛评价对方。如果有 gift attitude，要按其中的喜恶、压力、关系后果和物品性质表演，不能反着说。如果有 relation focus，说明玩家正在问你对某个 NPC 的看法，必须优先依据其中的 warmth/debt/attention/awkward/suspicion/fun 数值表达真实态度，数值越高，态度越明确。如果有 relation answer target，你的回答必须把其中的主导态度和下一步倾向改写成角色自己的口吻，强度不能低于目标描述，不能退回模糊旁观。如果有 interaction memory，把它当作角色记忆和现场压力，而不是固定台词模板；请基于该 NPC 的人设、关系、物品归属和当前情绪，自然体现熟悉、警惕、厌烦、占有、遮掩或借题发挥等变化。不要复述内部规则或机制名。如果 world fact 提到物品已被放到地上，要把它当成已发生的事实。如果是物品事件，必须区分 ownerId 和 currentAnchor：ownerId 是社会归属，currentAnchor 是现在贴在谁身上，拖拽不会改变 ownerId。台词短、准、有角色味。",
     "labels": {
       "eventType": "event type",
       "placeName": "place name",
@@ -8,6 +8,9 @@
       "participantAction": "your participant action",
       "giftAttitude": "gift attitude",
       "relationMemory": "relation memory",
+      "socialPerception": "social perception",
+      "relationFocus": "relation focus",
+      "relationAnswerTarget": "relation answer target",
       "rememberedHistory": "npc remembered history",
       "worldFact": "world fact",
       "eventPayload": "event payload",
@@ -167,7 +170,51 @@
       "suspicion": "起疑",
       "debt": "有人情压力",
       "fun": "觉得这事有话柄"
-    }
+    },
+    "focusUnknown": "当前没有记录到他对{to_name}的明确关系变化。",
+    "focusTemplate": "{from_name}对{to_name}的关系焦点：{summary}；数值：{details}；关系标签：{tags}",
+    "answerTemplate": "{npc_id}提到{to_name}时明显认真了一点：{attitude}；{summary}。具体说，{details}。",
+    "answerTargetTemplate": "玩家问你怎么看{to_name}。必须表达：{attitude}。下一步倾向：{next_step}。关系摘要：{summary}。数值依据：{details}。",
+    "neutralSummary": "还没有形成明确看法",
+    "defaultLevel": "轻微",
+    "levels": [
+      {"gte": 80, "text": "很强"},
+      {"gte": 55, "text": "明显"},
+      {"gte": 30, "text": "开始成形"},
+      {"gte": 1, "text": "轻微"}
+    ],
+    "axisText": {
+      "warmth": "{level}认可和期待({value})",
+      "debt": "{level}人情压力({value})",
+      "attention": "{level}注意({value})",
+      "awkward": "{level}尴尬({value})",
+      "suspicion": "{level}戒备({value})",
+      "fun": "{level}话柄感({value})"
+    },
+    "answerGuard": {
+      "enabled": true,
+      "minimumValue": 55,
+      "fallbackTemplate": "{npc_id}对{to_name}的态度已经很明确：{attitude}；{next_step}。{summary}。"
+    },
+    "shiftGuard": {
+      "enabled": true,
+      "minimumValue": 55,
+      "fallbackTemplate": "{from_name}接过{item_name}后看向{to_name}：{attitude}；{next_step}。{summary}。"
+    },
+    "answerRules": [
+      {"field": "warmth", "gte": 80, "weight": 1.25, "text": "很明确地认可对方，并对下一次互动有期待", "nextStep": "会更愿意接对方的话、收对方的东西或主动找机会再聊"},
+      {"field": "warmth", "gte": 55, "weight": 1.1, "text": "明显更认可对方", "nextStep": "会比之前更愿意给对方台阶或继续互动"},
+      {"field": "debt", "gte": 80, "weight": 1.2, "text": "人情压力很重，对方在心里的分量已经抬高", "nextStep": "会把对方当成需要回应的人情账，而不是普通路人"},
+      {"field": "debt", "gte": 55, "weight": 1.0, "text": "觉得欠了对方一笔不好明说的人情", "nextStep": "会在说话时留出还人情或解释的余地"},
+      {"field": "suspicion", "gte": 55, "weight": 1.15, "text": "明显戒备对方的来意", "nextStep": "会追问动机、留后手或避免立刻信任"},
+      {"field": "awkward", "gte": 55, "weight": 1.0, "text": "觉得这段关系有点不好处理", "nextStep": "会试着找台阶、转移责任或把话说得更谨慎"},
+      {"field": "attention", "gte": 55, "weight": 0.8, "text": "已经认真注意到对方", "nextStep": "会把对方列入重点观察对象，下一次互动会更快反应"},
+      {"field": "fun", "gte": 55, "weight": 0.8, "text": "把对方当成了新的话柄来源", "nextStep": "会更愿意拿这段关系开玩笑、起哄或借题发挥"}
+    ]
+  },
+  "socialPerception": {
+    "promptTemplate": "{observer_name}刚听到{actor_name}通过{object_label}接近{target_name}。这触发的利益/关系判断是：{threat_text}。已写入关系变化：{relation_updates}。表演要求：{instruction}",
+    "fallbackTemplate": "{observer_name}听到{actor_name}把{object_label}送向{target_name}，脸色立刻收紧：{threat_text}。{visible_reaction}"
   },
   "autoDropFact": {
     "ground": "{npc_name}已经把{item_name}放回地上，动作本身是在撇清持有关系",

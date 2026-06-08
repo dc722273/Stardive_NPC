@@ -49,6 +49,16 @@ var emotional_state: String = "neutral"
 var stance_to_object: Dictionary = {}
 var current_gag: Dictionary = {}
 var wellbeing: Dictionary = {}
+var experience_memory: Dictionary = {
+	"attention": 0,
+	"confidence": 0,
+	"fatigue": 0,
+	"curiosity": 0,
+	"social_charge": 0,
+	"frustration": 0,
+	"lastExperience": {},
+	"topIntents": [],
+}
 var cooldowns: Dictionary = {
 	"lastMicroActionId": "",
 	"lastLineMode": "",
@@ -80,6 +90,7 @@ static func from_dict(data: Dictionary):
 	state.stance_to_object = _dict_from(runtime.get("stanceToObject", runtime.get("stance_to_object", {})))
 	state.current_gag = _dict_from(runtime.get("currentGag", runtime.get("current_gag", {})))
 	state.wellbeing = _dict_from(runtime.get("wellbeing", {}))
+	state.experience_memory = _merge_dict(state.experience_memory, runtime.get("experienceMemory", runtime.get("experience_memory", {})))
 	state.cooldowns = _merge_dict(state.cooldowns, runtime.get("cooldowns", {}))
 
 	if data.has("position"):
@@ -137,6 +148,8 @@ func runtime_dict() -> Dictionary:
 		result["currentGag"] = current_gag.duplicate(true)
 	if not wellbeing.is_empty():
 		result["wellbeing"] = wellbeing.duplicate(true)
+	if not experience_memory.is_empty():
+		result["experienceMemory"] = experience_memory.duplicate(true)
 	return result
 
 

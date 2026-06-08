@@ -33,7 +33,7 @@ func build_feedback(event, npc = null, world_context: Dictionary = {}) -> Dictio
 	var npc_id := _resolve_npc_id(event, npc)
 	var context := _local_context(event, npc, world_context)
 	var text := _feedback_text(event, npc_id, context)
-	return {
+	var result := {
 		"ok": true,
 		"event_id": event_id,
 		"npc_id": npc_id,
@@ -41,6 +41,13 @@ func build_feedback(event, npc = null, world_context: Dictionary = {}) -> Dictio
 		"context": context,
 		"chunks": [text],
 	}
+	var response_contract := _feedback_response_contract(str(npc_id), event)
+	if not response_contract.is_empty():
+		result["response_contract"] = response_contract
+		text = _enforce_feedback_contract(text, result)
+		result["text"] = text
+		result["chunks"] = [text]
+	return result
 
 
 func begin_feedback_stream(event, npc = null, world_context: Dictionary = {}) -> Dictionary:
@@ -96,8 +103,12 @@ func _handle_transport_response(response: Dictionary, feedback: Dictionary, op_i
 		return
 
 	var content := str(response.get("content", ""))
-	if content.strip_edges().is_empty():
+	var raw_content := content
+	var used_fallback := content.strip_edges().is_empty()
+	if used_fallback:
 		content = fallback_text
+	else:
+		content = content.strip_edges()
 
 	# MVP：一次性 content 当作单块流式回填。append_stream_chunk 的守卫负责丢弃 late/cancelled。
 	var accepted_buffer := ""
@@ -117,6 +128,8 @@ func _handle_transport_response(response: Dictionary, feedback: Dictionary, op_i
 		_emit_chunk(on_chunk, content)
 
 	var done := feedback.duplicate(true)
+	done["llm_raw_text"] = raw_content
+	done["used_fallback_text"] = used_fallback
 	if llm_client != null and llm_client.has_method("complete_operation"):
 		# 空 final_text → LLMClient 用累积 buffer。
 		var commit: Dictionary = llm_client.complete_operation(op_id, "")
@@ -173,6 +186,7 @@ func _build_feedback_messages(feedback: Dictionary, event, npc) -> Array:
 	var performance_plan: Dictionary = payload.get("performance_plan", {}) if payload is Dictionary else {}
 	var relation_updates: Array = payload.get("relation_memory_updates", []) if payload is Dictionary else []
 	var npc_auto_drop: Dictionary = payload.get("npc_auto_drop", {}) if payload is Dictionary else {}
+	var social_perception_text := _social_perception_text(payload)
 
 	var user_lines := PackedStringArray()
 	user_lines.append("%s: %s" % [str(labels.get("eventType", "event type")), event_type])
@@ -188,6 +202,14 @@ func _build_feedback_messages(feedback: Dictionary, event, npc) -> Array:
 		user_lines.append("%s: %s" % [str(labels.get("giftAttitude", "gift attitude")), gift_attitude_text])
 	if not relation_updates.is_empty():
 		user_lines.append("%s: %s" % [str(labels.get("relationMemory", "relation memory")), _relation_memory_text(relation_updates)])
+	if not social_perception_text.is_empty():
+		user_lines.append("%s: %s" % [str(labels.get("socialPerception", "social perception")), social_perception_text])
+	var relation_focus := _relation_focus_text(npc_id, payload)
+	if not relation_focus.is_empty():
+		user_lines.append("%s: %s" % [str(labels.get("relationFocus", "relation focus")), relation_focus])
+	var relation_answer_target := _relation_answer_target_text(npc_id, payload)
+	if not relation_answer_target.is_empty():
+		user_lines.append("%s: %s" % [str(labels.get("relationAnswerTarget", "relation answer target")), relation_answer_target])
 	var standing_memory := _standing_memory_text(npc_id, npc, event)
 	if not standing_memory.is_empty():
 		user_lines.append("%s: %s" % [str(labels.get("rememberedHistory", "npc remembered history")), standing_memory])
@@ -295,6 +317,12 @@ func _feedback_text(event, npc_id: StringName, context: Dictionary) -> String:
 	if event_type == &"player_chat_to_npc":
 		var player_message := str(payload.get("player_message", "")) if payload is Dictionary else ""
 		if not player_message.is_empty():
+			var social_reaction := _social_perception_fallback(str(npc_id), payload)
+			if not social_reaction.is_empty():
+				return social_reaction
+			var relation_answer := _relation_question_fallback(str(npc_id), player_message)
+			if not relation_answer.is_empty():
+				return relation_answer
 			return _template(["fallbackText", "chat"], {"npc_id": str(npc_id), "player_message": player_message})
 	if event_type == &"player_chat_reported_item_transfer":
 		var item_name := str(payload.get("item_name", fallback_cfg.get("genericItemName", ""))) if payload is Dictionary else str(fallback_cfg.get("genericItemName", ""))
@@ -520,6 +548,60 @@ func _relation_memory_text(relation_updates: Array) -> String:
 	return "；".join(parts)
 
 
+func _social_perception_text(payload: Dictionary) -> String:
+	if not (payload is Dictionary):
+		return ""
+	var perception: Dictionary = payload.get("stakeholder_perception", {})
+	if perception.is_empty():
+		return ""
+	var fact: Dictionary = perception.get("fact", {})
+	return _template(["socialPerception", "promptTemplate"], {
+		"observer_name": str(perception.get("observerName", "")),
+		"actor_name": str(fact.get("actorName", fact.get("actorNpcId", ""))),
+		"target_name": str(fact.get("targetName", fact.get("targetNpcId", ""))),
+		"object_label": str(fact.get("objectLabel", "")),
+		"threat_text": str(perception.get("threatText", "")),
+		"instruction": str(perception.get("instruction", "")),
+		"relation_updates": _relation_axis_updates_text(perception.get("relationMemoryUpdates", [])),
+	})
+
+
+func _social_perception_fallback(npc_id: String, payload: Dictionary) -> String:
+	if not (payload is Dictionary):
+		return ""
+	var perception: Dictionary = payload.get("stakeholder_perception", {})
+	if perception.is_empty():
+		return ""
+	var fact: Dictionary = perception.get("fact", {})
+	return _template(["socialPerception", "fallbackTemplate"], {
+		"npc_id": npc_id,
+		"observer_name": str(perception.get("observerName", npc_id)),
+		"actor_name": str(fact.get("actorName", fact.get("actorNpcId", ""))),
+		"target_name": str(fact.get("targetName", fact.get("targetNpcId", ""))),
+		"object_label": str(fact.get("objectLabel", "")),
+		"threat_text": str(perception.get("threatText", "")),
+		"visible_reaction": str(perception.get("visibleReaction", "")),
+		"relation_updates": _relation_axis_updates_text(perception.get("relationMemoryUpdates", [])),
+	})
+
+
+func _relation_axis_updates_text(updates: Variant) -> String:
+	if not (updates is Array):
+		return ""
+	var parts := PackedStringArray()
+	for update in updates:
+		if not (update is Dictionary):
+			continue
+		parts.append("%s->%s %s" % [
+			_npc_display_name(str(update.get("fromNpcId", ""))),
+			_npc_display_name(str(update.get("toNpcId", ""))),
+			_relation_axis_detail_text(update),
+		])
+		if parts.size() >= 3:
+			break
+	return "；".join(parts)
+
+
 func _prompt_auto_drop_payload(auto_drop: Dictionary) -> Dictionary:
 	if auto_drop.is_empty():
 		return {}
@@ -638,6 +720,290 @@ func _standing_relation_memory_text(npc_id: String) -> String:
 		if lines.size() >= 3:
 			break
 	return "；".join(lines)
+
+
+func _relation_focus_text(npc_id: String, payload: Dictionary) -> String:
+	if not (payload is Dictionary):
+		return ""
+	var message := str(payload.get("player_message", "")).strip_edges()
+	var focus_id := _find_mentioned_npc_id(message, StringName(npc_id))
+	if focus_id == &"":
+		return ""
+	var memory := _relation_memory(npc_id, str(focus_id))
+	if memory.is_empty():
+		return _template(["relationMemory", "focusUnknown"], {"to_name": _npc_display_name(str(focus_id))})
+	return _relation_memory_detail_text(memory)
+
+
+func _relation_answer_target_text(npc_id: String, payload: Dictionary) -> String:
+	if not (payload is Dictionary):
+		return ""
+	var focus_id := _find_mentioned_npc_id(str(payload.get("player_message", "")), StringName(npc_id))
+	if focus_id == &"":
+		return ""
+	var memory := _relation_memory(npc_id, str(focus_id))
+	if memory.is_empty():
+		return ""
+	return _relation_answer_target_from_memory(memory)
+
+
+func _relation_question_fallback(npc_id: String, message: String) -> String:
+	var focus_id := _find_mentioned_npc_id(message, StringName(npc_id))
+	if focus_id == &"":
+		return ""
+	var memory := _relation_memory(npc_id, str(focus_id))
+	if memory.is_empty():
+		return ""
+	var to_name := _npc_display_name(str(focus_id))
+	return _template(["relationMemory", "answerTemplate"], {
+		"npc_id": npc_id,
+		"to_name": to_name,
+		"summary": _relation_answer_summary(memory),
+		"details": _relation_axis_detail_text(memory),
+		"attitude": _relation_attitude_sentence(memory),
+	})
+
+
+func _relation_memory_detail_text(memory: Dictionary) -> String:
+	return _template(["relationMemory", "focusTemplate"], {
+		"from_name": _npc_display_name(str(memory.get("fromNpcId", ""))),
+		"to_name": _npc_display_name(str(memory.get("toNpcId", ""))),
+		"summary": _relation_answer_summary(memory),
+		"details": _relation_axis_detail_text(memory),
+		"tags": _relation_tags_text(memory),
+	})
+
+
+func _relation_answer_summary(memory: Dictionary) -> String:
+	var axis_texts := PackedStringArray()
+	var axis_cfg: Dictionary = _cfg(["relationMemory", "axisText"], {})
+	for axis in ["warmth", "debt", "attention", "awkward", "suspicion", "fun"]:
+		var value := int(memory.get(axis, 0))
+		if value <= 0:
+			continue
+		axis_texts.append(_format_template(str(axis_cfg.get(axis, "{axis}={value}")), {
+			"axis": axis,
+			"value": value,
+			"level": _relation_level_text(value),
+		}))
+		if axis_texts.size() >= 3:
+			break
+	if axis_texts.is_empty():
+		return str(_cfg(["relationMemory", "neutralSummary"], "还没有形成明确看法"))
+	return "、".join(axis_texts)
+
+
+func _relation_answer_target_from_memory(memory: Dictionary) -> String:
+	var rule := _relation_attitude_rule(memory)
+	return _template(["relationMemory", "answerTargetTemplate"], {
+		"to_name": _npc_display_name(str(memory.get("toNpcId", ""))),
+		"attitude": str(rule.get("text", _relation_attitude_sentence(memory))),
+		"next_step": str(rule.get("nextStep", "")),
+		"summary": _relation_answer_summary(memory),
+		"details": _relation_axis_detail_text(memory),
+	})
+
+
+func _relation_attitude_sentence(memory: Dictionary) -> String:
+	var rule := _relation_attitude_rule(memory)
+	if rule.is_empty():
+		return str(_cfg(["relationMemory", "neutralSummary"], "还没有形成明确看法"))
+	return str(rule.get("text", ""))
+
+
+func _relation_attitude_rule(memory: Dictionary) -> Dictionary:
+	var best: Dictionary = {}
+	for raw_rule in _cfg(["relationMemory", "answerRules"], []):
+		if not (raw_rule is Dictionary):
+			continue
+		var rule: Dictionary = raw_rule
+		var field := str(rule.get("field", ""))
+		if field.is_empty():
+			continue
+		var value := int(memory.get(field, 0))
+		if value < int(rule.get("gte", 0)):
+			continue
+		var score := value * float(rule.get("weight", 1.0))
+		if best.is_empty() or score > float(best.get("_score", -1.0)):
+			best = rule.duplicate(true)
+			best["_score"] = score
+			best["_value"] = value
+	if best.is_empty():
+		return {}
+	var formatted_values := {
+		"field": str(best.get("field", "")),
+		"value": int(best.get("_value", 0)),
+		"level": _relation_level_text(int(best.get("_value", 0))),
+	}
+	best["text"] = _format_template(str(best.get("text", "")), formatted_values)
+	if best.has("nextStep"):
+		best["nextStep"] = _format_template(str(best.get("nextStep", "")), formatted_values)
+	return best
+
+
+func _feedback_response_contract(npc_id: String, event) -> Dictionary:
+	var event_type := StringName(_field(event, "type", ""))
+	var payload: Dictionary = _field(event, "payload", {})
+	if not (payload is Dictionary):
+		return {}
+	if event_type == &"player_chat_to_npc":
+		return _relation_answer_contract(npc_id, payload)
+	return _relation_shift_contract(npc_id, payload)
+
+
+func _relation_answer_contract(npc_id: String, payload: Dictionary) -> Dictionary:
+	var guard_cfg: Dictionary = _cfg(["relationMemory", "answerGuard"], {})
+	if not bool(guard_cfg.get("enabled", true)):
+		return {}
+	var focus_id := _find_mentioned_npc_id(str(payload.get("player_message", "")), StringName(npc_id))
+	if focus_id == &"":
+		return {}
+	var memory := _relation_memory(npc_id, str(focus_id))
+	if memory.is_empty():
+		return {}
+	var rule := _relation_attitude_rule(memory)
+	if rule.is_empty():
+		return {}
+	if int(rule.get("_value", 0)) < int(guard_cfg.get("minimumValue", 55)):
+		return {}
+	var attitude := str(rule.get("text", ""))
+	var next_step := str(rule.get("nextStep", ""))
+	return {
+		"type": "relation_answer",
+		"attitude": attitude,
+		"nextStep": next_step,
+		"fallbackText": _format_template(str(guard_cfg.get("fallbackTemplate", "")), {
+			"npc_id": npc_id,
+			"from_name": _npc_display_name(npc_id),
+			"to_name": _npc_display_name(str(focus_id)),
+			"attitude": attitude,
+			"next_step": next_step,
+			"summary": _relation_answer_summary(memory),
+			"details": _relation_axis_detail_text(memory),
+		}),
+	}
+
+
+func _relation_shift_contract(npc_id: String, payload: Dictionary) -> Dictionary:
+	var guard_cfg: Dictionary = _cfg(["relationMemory", "shiftGuard"], {})
+	if not bool(guard_cfg.get("enabled", true)):
+		return {}
+	var updates: Variant = payload.get("relation_memory_updates", [])
+	if not (updates is Array):
+		return {}
+	var best_contract := {}
+	for update in updates:
+		if not (update is Dictionary) or str(update.get("fromNpcId", "")) != npc_id:
+			continue
+		var rule := _relation_attitude_rule(update)
+		if rule.is_empty() or int(rule.get("_value", 0)) < int(guard_cfg.get("minimumValue", 55)):
+			continue
+		var score := float(rule.get("_score", 0.0))
+		if best_contract.is_empty() or score > float(best_contract.get("_score", -1.0)):
+			var to_id := str(update.get("toNpcId", ""))
+			best_contract = {
+				"_score": score,
+				"type": "relation_shift",
+				"attitude": str(rule.get("text", "")),
+				"nextStep": str(rule.get("nextStep", "")),
+				"fallbackText": _format_template(str(guard_cfg.get("fallbackTemplate", "")), {
+					"npc_id": npc_id,
+					"from_name": _npc_display_name(npc_id),
+					"to_name": _payload_npc_display_name(payload, to_id),
+					"item_name": str(payload.get("item_name", _cfg(["fallbackText", "genericItemName"], "物品"))),
+					"attitude": str(rule.get("text", "")),
+					"next_step": str(rule.get("nextStep", "")),
+					"summary": _relation_answer_summary(update),
+					"details": _relation_axis_detail_text(update),
+				}),
+			}
+	if best_contract.has("_score"):
+		best_contract.erase("_score")
+	return best_contract
+
+
+func _enforce_feedback_contract(content: String, feedback: Dictionary) -> String:
+	var contract: Variant = feedback.get("response_contract", {})
+	if not (contract is Dictionary) or contract.is_empty():
+		return content
+	var clean := content.strip_edges()
+	if clean.is_empty():
+		return str(contract.get("fallbackText", content))
+	return clean
+
+
+func _relation_axis_detail_text(memory: Dictionary) -> String:
+	var parts := PackedStringArray()
+	for axis in ["attention", "warmth", "awkward", "suspicion", "debt", "fun"]:
+		parts.append("%s=%d" % [axis, int(memory.get(axis, 0))])
+	return "，".join(parts)
+
+
+func _relation_tags_text(memory: Dictionary) -> String:
+	var raw_tags: Variant = memory.get("tags", [])
+	if not (raw_tags is Array):
+		return ""
+	var parts := PackedStringArray()
+	for tag in raw_tags:
+		if tag is Dictionary:
+			parts.append("%s:%d" % [str(tag.get("tag", "")), int(tag.get("strength", 0))])
+		if parts.size() >= 3:
+			break
+	return "，".join(parts)
+
+
+func _relation_level_text(value: int) -> String:
+	var levels: Array = _cfg(["relationMemory", "levels"], [])
+	for raw_level in levels:
+		if raw_level is Dictionary and value >= int(raw_level.get("gte", 0)):
+			return str(raw_level.get("text", ""))
+	return str(_cfg(["relationMemory", "defaultLevel"], "轻微"))
+
+
+func _relation_memory(from_npc_id: String, to_npc_id: String) -> Dictionary:
+	if entity_registry == null or from_npc_id.is_empty() or to_npc_id.is_empty():
+		return {}
+	if entity_registry.has_method("relation_memory"):
+		return entity_registry.relation_memory(StringName(from_npc_id), StringName(to_npc_id))
+	var memories: Variant = entity_registry.get("relation_memories") if entity_registry is Object else {}
+	if memories is Dictionary:
+		for memory in memories.values():
+			if memory is Dictionary and str(memory.get("fromNpcId", "")) == from_npc_id and str(memory.get("toNpcId", "")) == to_npc_id:
+				return memory.duplicate(true)
+	return {}
+
+
+func _find_mentioned_npc_id(text: String, exclude_id: StringName = &"") -> StringName:
+	if text.strip_edges().is_empty() or entity_registry == null:
+		return &""
+	var npcs: Variant = entity_registry.get("npcs") if entity_registry is Object else {}
+	if not (npcs is Dictionary):
+		return &""
+	var best_id: StringName = &""
+	var best_len := 0
+	for npc in npcs.values():
+		if npc == null or StringName(_field(npc, "id", &"")) == exclude_id:
+			continue
+		for alias in _npc_aliases(npc):
+			var alias_text := str(alias)
+			if alias_text.length() > best_len and text.find(alias_text) >= 0:
+				best_id = StringName(_field(npc, "id", &""))
+				best_len = alias_text.length()
+	return best_id
+
+
+func _npc_aliases(npc) -> Array:
+	var aliases: Array = []
+	for value in [str(_field(npc, "id", "")), str(_field(npc, "name", ""))]:
+		if not value.is_empty() and not aliases.has(value):
+			aliases.append(value)
+	var raw_aliases: Variant = _field(npc, "aliases", [])
+	if raw_aliases is Array:
+		for raw_alias in raw_aliases:
+			var alias := str(raw_alias)
+			if not alias.is_empty() and not aliases.has(alias):
+				aliases.append(alias)
+	return aliases
 
 
 func _npc_display_name(npc_id: String) -> String:

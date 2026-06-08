@@ -1,0 +1,95 @@
+{
+  "id": "musk",
+  "name": "musk",
+  "visual": {
+    "markerPath": "res://assets/map_markers/musk小球.png"
+  },
+  "tile_x": 17,
+  "tile_y": 9,
+  "traits": {
+    "tell": 70,
+    "face": 72,
+    "control": 92,
+    "caution": 42,
+    "play": 78
+  },
+  "tags": [
+    "richest_merchant",
+    "wealth_to_political_voice",
+    "wants_presidential_influence",
+    "exclusive_access_competitor",
+    "tech_oligarch",
+    "turns_money_into_policy"
+  ],
+  "aliases": ["musk", "Musk", "马斯克", "商人", "世界首富"],
+  "bodyGags": [
+    {
+      "id": "deal_receipt",
+      "label": "先看交易空间",
+      "match": {
+        "classificationKeys": ["valuable", "valuable.cup", "cash", "cash.dollars"],
+        "reasons": ["status", "debt", "utility"]
+      },
+      "action": "hover_hand",
+      "preemptiveLine": "先别急，这里面有交易空间。"
+    },
+    {
+      "id": "policy_seal_pressure",
+      "label": "别把我锁死",
+      "match": {
+        "classificationKeys": ["document.seal"],
+        "reasons": ["power", "awkward", "joke"]
+      },
+      "action": "push_object_back",
+      "preemptiveLine": "别用文件把选择锁死。"
+    }
+  ],
+  "preference": {
+    "classificationAffinity": {
+      "cash": 30,
+      "cash.dollars": 36,
+      "valuable": 28,
+      "valuable.cup": 18,
+      "document": 16,
+      "document.seal": 22,
+      "weapon": -6,
+      "weapon.handgun": -10,
+      "drink": 2,
+      "drink.soda": 8
+    },
+    "socialAffinity": {
+      "status": 34,
+      "power": 42,
+      "utility": 30,
+      "debt": 10,
+      "awkward": -4,
+      "joke": 16,
+      "danger": -8
+    },
+    "tolerance": {
+      "danger": 46,
+      "debt": 72,
+      "awkward": 62,
+      "repetition": 84
+    }
+  },
+  "style": {
+    "leakActions": ["eyes_widen", "tap_stop", "eyebrow_raise"],
+    "coverActions": ["fake_serious", "look_away", "straighten_sleeve"],
+    "wantActions": ["open_notebook", "hover_hand", "glance_target"],
+    "rejectActions": ["push_object_back", "hold_up_hands", "deadpan"],
+    "observeActions": ["look_between", "look_around", "eyebrow_raise"],
+    "lineMode": "deal_maker"
+  },
+  "animSetId": "musk",
+  "runtime": {
+    "npcId": "musk",
+    "performanceState": "idle",
+    "emotionalState": "neutral",
+    "cooldowns": {
+      "lastMicroActionId": "",
+      "lastLineMode": "",
+      "lastReactedAt": 0
+    }
+  }
+}

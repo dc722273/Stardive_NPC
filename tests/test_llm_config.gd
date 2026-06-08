@@ -25,9 +25,9 @@ func run() -> Array:
 
 
 func _test_parse_basic_multi_line(failures: Array) -> void:
-	var parsed := LLMConfigScript.parse_env_text("OPENROUTER_API_KEY=dummy_openrouter_key\nOPENROUTER_MODEL=google/gemini-3.1-flash-lite")
+	var parsed := LLMConfigScript.parse_env_text("OPENROUTER_API_KEY=dummy_openrouter_key\nOPENROUTER_MODEL=google/gemini-3.5-flash")
 	_assert_equal(parsed.get("OPENROUTER_API_KEY", ""), "dummy_openrouter_key", "parse keeps first key value", failures)
-	_assert_equal(parsed.get("OPENROUTER_MODEL", ""), "google/gemini-3.1-flash-lite", "parse keeps second key value", failures)
+	_assert_equal(parsed.get("OPENROUTER_MODEL", ""), "google/gemini-3.5-flash", "parse keeps second key value", failures)
 
 
 func _test_parse_skips_comment_lines(failures: Array) -> void:
@@ -65,7 +65,7 @@ func _test_parse_trims_surrounding_whitespace(failures: Array) -> void:
 
 
 func _test_config_disabled_without_api_key(failures: Array) -> void:
-	var config = LLMConfigScript.from_env_text("OPENROUTER_MODEL=google/gemini-3.1-flash-lite")
+	var config = LLMConfigScript.from_env_text("OPENROUTER_MODEL=google/gemini-3.5-flash")
 	_assert_equal(config.enabled, false, "config disabled when OPENROUTER_API_KEY missing", failures)
 	_assert_equal(config.api_key, "", "config api_key empty when missing", failures)
 
@@ -77,7 +77,7 @@ func _test_config_enabled_and_defaults(failures: Array) -> void:
 	var config = LLMConfigScript.from_env_text("OPENROUTER_API_KEY=dummy_openrouter_key")
 	_assert_equal(config.enabled, true, "config enabled when api key present", failures)
 	_assert_equal(config.api_key, "dummy_openrouter_key", "config keeps api key", failures)
-	_assert_equal(config.model, "google/gemini-3.1-flash-lite", "config falls back to default model", failures)
+	_assert_equal(config.model, LLMConfigScript.DEFAULT_MODEL, "config falls back to default model", failures)
 	_assert_equal(config.base_url, "https://openrouter.ai/api/v1", "config falls back to default base_url", failures)
 
 	var overridden = LLMConfigScript.from_env_text("OPENROUTER_API_KEY=dummy_key\nOPENROUTER_MODEL=anthropic/claude\nOPENROUTER_BASE_URL=https://example.test/api")
