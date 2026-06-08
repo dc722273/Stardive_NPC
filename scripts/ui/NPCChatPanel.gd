@@ -10,19 +10,30 @@ const HISTORY_SIZE := Vector2(1088, 392)
 const SELECTOR_SIZE := Vector2(240, 60)
 const INPUT_HEIGHT := 60
 const SEND_SIZE := Vector2(120, 60)
+const TOGGLE_SIZE := Vector2(120, 52)
 const FONT_SIZE := 32
 const INPUT_ROW_TOP_OFFSET := 10
+const TITLE_ROW_HEIGHT := 52
+const MINIMIZED_FRAME_SIZE := Vector2(360, 84)
 
+var stack: VBoxContainer
+var content_container: VBoxContainer
+var title_label: Label
+var toggle_button: Button
 var target_selector: OptionButton
 var history_label: RichTextLabel
 var input_edit: LineEdit
 var send_button: Button
 var _history: Array[String] = []
 var _target_ids: Array[StringName] = []
+var _minimized: bool = false
+var _expanded_frame_size: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
 	_build_controls_if_needed()
+	_capture_expanded_frame_size()
+	_apply_minimized_state()
 
 
 func configure_npcs(npcs: Dictionary, selected_id: StringName = &"") -> void:
@@ -89,9 +100,26 @@ func set_waiting(waiting: bool) -> void:
 		input_edit.grab_focus()
 
 
+func toggle_minimized() -> void:
+	set_minimized(not _minimized)
+
+
+func set_minimized(minimized: bool) -> void:
+	_build_controls_if_needed()
+	_capture_expanded_frame_size()
+	_minimized = minimized
+	_apply_minimized_state()
+
+
+func is_minimized() -> bool:
+	return _minimized
+
+
 func _build_controls_if_needed() -> void:
 	if input_edit != null:
 		return
+
+	_capture_expanded_frame_size()
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", int(8 * UI_SCALE))
@@ -100,10 +128,33 @@ func _build_controls_if_needed() -> void:
 	margin.add_theme_constant_override("margin_bottom", int(8 * UI_SCALE))
 	add_child(margin)
 
-	var stack := VBoxContainer.new()
+	stack = VBoxContainer.new()
 	stack.custom_minimum_size = PANEL_SIZE
 	stack.add_theme_constant_override("separation", int(4 * UI_SCALE))
 	margin.add_child(stack)
+
+	var title_row := HBoxContainer.new()
+	title_row.custom_minimum_size = Vector2(PANEL_SIZE.x, TITLE_ROW_HEIGHT)
+	title_row.add_theme_constant_override("separation", int(4 * UI_SCALE))
+	stack.add_child(title_row)
+
+	title_label = Label.new()
+	title_label.text = "对话"
+	title_label.add_theme_font_size_override("font_size", FONT_SIZE)
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title_row.add_child(title_label)
+
+	toggle_button = Button.new()
+	toggle_button.text = "收起"
+	toggle_button.custom_minimum_size = TOGGLE_SIZE
+	toggle_button.add_theme_font_size_override("font_size", FONT_SIZE)
+	toggle_button.pressed.connect(toggle_minimized)
+	title_row.add_child(toggle_button)
+
+	content_container = VBoxContainer.new()
+	content_container.add_theme_constant_override("separation", int(4 * UI_SCALE))
+	stack.add_child(content_container)
 
 	history_label = RichTextLabel.new()
 	history_label.bbcode_enabled = true
@@ -115,11 +166,11 @@ func _build_controls_if_needed() -> void:
 	history_label.add_theme_font_size_override("font_size", FONT_SIZE)
 	history_label.add_theme_font_size_override("normal_font_size", FONT_SIZE)
 	history_label.add_theme_font_size_override("bold_font_size", FONT_SIZE)
-	stack.add_child(history_label)
+	content_container.add_child(history_label)
 
 	var controls_margin := MarginContainer.new()
 	controls_margin.add_theme_constant_override("margin_top", INPUT_ROW_TOP_OFFSET)
-	stack.add_child(controls_margin)
+	content_container.add_child(controls_margin)
 
 	var controls := HBoxContainer.new()
 	controls.add_theme_constant_override("separation", int(4 * UI_SCALE))
@@ -151,6 +202,7 @@ func _build_controls_if_needed() -> void:
 	controls.add_child(send_button)
 
 	_update_input_enabled()
+	_apply_minimized_state()
 
 
 func _submit_message() -> void:
@@ -180,6 +232,39 @@ func _update_input_enabled() -> void:
 	var has_target := current_target_id() != &""
 	input_edit.editable = has_target
 	send_button.disabled = not has_target
+
+
+func _capture_expanded_frame_size() -> void:
+	if _expanded_frame_size != Vector2.ZERO:
+		return
+	if size.x > 0.0 and size.y > 0.0:
+		_expanded_frame_size = size
+		return
+	_expanded_frame_size = PANEL_SIZE + Vector2(16 * UI_SCALE, 44 * UI_SCALE)
+
+
+func _apply_minimized_state() -> void:
+	if content_container != null:
+		content_container.visible = not _minimized
+	if toggle_button != null:
+		toggle_button.text = "展开" if _minimized else "收起"
+	if title_label != null:
+		title_label.text = "对话" if _minimized else "对话记录"
+	if stack != null:
+		var margin_size := Vector2(16 * UI_SCALE, 16 * UI_SCALE)
+		var target_frame_size := MINIMIZED_FRAME_SIZE if _minimized else _expanded_frame_size
+		stack.custom_minimum_size = Vector2(
+			max(1.0, target_frame_size.x - margin_size.x),
+			max(float(TITLE_ROW_HEIGHT), target_frame_size.y - margin_size.y)
+		)
+	_resize_from_bottom_left(MINIMIZED_FRAME_SIZE if _minimized else _expanded_frame_size)
+
+
+func _resize_from_bottom_left(target_size: Vector2) -> void:
+	if target_size.x <= 0.0 or target_size.y <= 0.0:
+		return
+	offset_right = offset_left + target_size.x
+	offset_top = offset_bottom - target_size.y
 
 
 func _escape_bbcode(text: String) -> String:
